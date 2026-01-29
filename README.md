@@ -1,36 +1,204 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Advanced Data Table
 
-## Getting Started
+A **plug-and-play, reusable data table component** built for modern React / Next.js applications.
+Designed with a **compact grid layout**, **ellipsis handling**, **column sorting via a three-dot menu**, and a **simple config-driven API** — inspired by **shadcn/ui**.
 
-First, run the development server:
+---
+
+## ✨ Features
+
+* 📦 Installable via **shadcn CLI**
+* 🧩 Plug-and-play (no internal edits required)
+* 📐 Compact grid-style layout
+* 📏 Fixed row height & column width
+* ✂️ Ellipsis (`...`) for overflowing cell content
+* 👀 Full cell value visible on hover
+* 🔢 `123` indicator for numeric columns
+* 🔤 `ABC` indicator for string columns
+* ⋮ Three-dot menu per column
+* ↕️ Sort Ascending / Descending
+* 🧠 Strongly typed with TypeScript
+
+---
+
+## 📦 Installation
+
+Add the component using the **shadcn CLI**:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npx shadcn@latest add https://<your-domain>/registry/advanced-data-table.json
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Example
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npx shadcn@latest add https://advanced-data-table.vercel.app/registry/advanced-data-table.json
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This command will automatically:
 
-## Learn More
+* Install required dependencies:
 
-To learn more about Next.js, take a look at the following resources:
+  * `@tanstack/react-table`
+  * `lucide-react`
+* Install required shadcn UI primitives (`table`, `button`, etc.)
+* Add the component to:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+components/ui/advanced-data-table.tsx
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 🚀 Usage
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 1️⃣ Import the Component
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```tsx
+import { AdvancedDataTable } from "@/components/ui/advanced-data-table";
+```
+
+---
+
+### 2️⃣ Define Columns (Configuration-Driven)
+
+Create a `columns.ts` file **next to your page or feature**.
+
+```ts
+// columns.ts
+import { ColumnConfig } from "@/components/ui/advanced-data-table";
+
+type User = {
+  id: number;
+  name: string;
+  email: string;
+};
+
+export const columns: ColumnConfig<User>[] = [
+  {
+    key: "id",
+    label: "ID",
+    type: "number", // shows 123
+    sortable: true,
+  },
+  {
+    key: "name",
+    label: "Name",
+    type: "string", // shows ABC
+    sortable: true,
+  },
+  {
+    key: "email",
+    label: "Email",
+    type: "string",
+    sortable: true,
+  },
+];
+```
+
+---
+
+### 3️⃣ Provide Data
+
+```ts
+// data.ts
+export const data = [
+  {
+    id: 1,
+    name: "Anurag Prajapati",
+    email: "anurag@email.com",
+  },
+  {
+    id: 2,
+    name: "John Doe",
+    email: "john@email.com",
+  },
+];
+```
+
+---
+
+### 4️⃣ Render the Table
+
+```tsx
+import { AdvancedDataTable } from "@/components/ui/advanced-data-table";
+import { columns } from "./columns";
+import { data } from "./data";
+
+export default function UsersPage() {
+  return (
+    <AdvancedDataTable
+      columns={columns}
+      data={data}
+    />
+  );
+}
+```
+
+That’s it 🎉
+No additional setup required.
+
+---
+
+## 🧠 ColumnConfig API
+
+```ts
+type ColumnConfig<T> = {
+  key: keyof T;          // Data field key
+  label: string;         // Column header
+  type: "string" | "number";
+  sortable?: boolean;    // Enable/disable sorting
+};
+```
+
+---
+
+## ⚙️ Optional Props
+
+```tsx
+<AdvancedDataTable
+  columns={columns}
+  data={data}
+  rowHeight={32}
+  columnWidth={140}
+  defaultSort={{ key: "id", direction: "asc" }}
+/>
+```
+
+---
+
+## 📁 Recommended Folder Structure
+
+```
+app/
+ └─ users/
+     ├─ page.tsx
+     ├─ columns.ts
+     └─ data.ts
+```
+
+---
+
+## 🧠 Design Philosophy
+
+* **Simple public API**
+* **No TanStack types exposed**
+* **Config in, behavior out**
+* **Reusable across projects**
+* **shadcn-style developer experience**
+
+---
+
+## 🛠 Built With
+
+* React
+* TypeScript
+* @tanstack/react-table
+* shadcn/ui
+* Tailwind CSS
+
+---
+
+## 📄 License
+
+MIT
