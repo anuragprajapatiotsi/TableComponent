@@ -9,16 +9,30 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   SortingState,
+  VisibilityState,
   useReactTable,
 } from "@tanstack/react-table";
-import { MoreVertical, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  MoreVertical,
+  ArrowUp,
+  ArrowDown,
+  EyeOff,
+  ChevronsUpDown,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Settings2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import {
   Table,
@@ -34,6 +48,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 // --- Types ---
 
@@ -63,54 +78,68 @@ const HeaderWithType = <TData,>({
   text: string;
 }) => {
   const [open, setOpen] = React.useState(false);
+  const isSorted = column.getIsSorted();
 
   return (
     <div className="group flex items-center w-full gap-1.5">
-      {/* Left content */}
       <span className="text-[10px] uppercase text-muted-foreground/70 font-mono tracking-tighter">
         {type === "number" ? "123" : "ABC"}
       </span>
 
-      <span className="font-medium text-muted-foreground truncate">{text}</span>
+      <span className="font-medium text-muted-foreground truncate flex-1">
+        {text}
+      </span>
 
-      {/* Right menu */}
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             size="sm"
-            className="
-              h-6 w-6 p-0 ml-auto
-              opacity-0
-              group-hover:opacity-100
-              transition-opacity
-              data-[state=open]:opacity-100
-            "
+            className={cn(
+              "h-6 w-6 p-0 ml-auto transition-opacity",
+              isSorted || open ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            )}
           >
             <span className="sr-only">Open menu</span>
-            <MoreVertical className="h-3 w-3" />
+            {isSorted === "asc" ? (
+              <ArrowUp className="h-3 w-3 text-primary" />
+            ) : isSorted === "desc" ? (
+              <ArrowDown className="h-3 w-3 text-primary" />
+            ) : (
+              <MoreVertical className="h-3 w-3" />
+            )}
           </Button>
         </DropdownMenuTrigger>
 
-        <DropdownMenuContent
-          align="end"
-          side="bottom"
-          className="w-40"
-          onMouseEnter={() => setOpen(true)}
-          onMouseLeave={() => setOpen(false)}
-        >
-          <DropdownMenuItem
-            onClick={() => column.toggleSorting(false)}
-            className={column.getIsSorted() === "asc" ? "bg-accent" : ""}
-          >
-            Sort Ascending
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+            Sort Options
+          </DropdownMenuLabel>
+          
+          <DropdownMenuItem onClick={() => column.toggleSorting(false)}>
+            <ArrowUp className="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
+            Ascending
+            {isSorted === "asc" && <Check className="ml-auto h-4 w-4" />}
           </DropdownMenuItem>
 
-          <DropdownMenuItem
-            onClick={() => column.toggleSorting(true)}
-            className={column.getIsSorted() === "desc" ? "bg-accent" : ""}
-          >
-            Sort Descending
+          <DropdownMenuItem onClick={() => column.toggleSorting(true)}>
+            <ArrowDown className="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
+            Descending
+            {isSorted === "desc" && <Check className="ml-auto h-4 w-4" />}
+          </DropdownMenuItem>
+
+          {isSorted && (
+            <DropdownMenuItem onClick={() => column.clearSorting()}>
+              <ChevronsUpDown className="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
+              Clear Sort
+            </DropdownMenuItem>
+          )}
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem onClick={() => column.toggleVisibility(false)}>
+            <EyeOff className="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
+            Hide Column
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -126,8 +155,8 @@ export function AdvancedDataTable<TData>({
   defaultPageSize = 10,
 }: AdvancedDataTableProps<TData>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
 
-  // Convert simple column config to TanStack ColumnDef
   const tableColumns = React.useMemo<ColumnDef<TData>[]>(() => {
     // Index Column
     const indexCol: ColumnDef<TData> = {
@@ -143,6 +172,7 @@ export function AdvancedDataTable<TData>({
         </div>
       ),
       enableSorting: false,
+      enableHiding: false,
       size: 50,
     };
 
@@ -152,8 +182,8 @@ export function AdvancedDataTable<TData>({
       header: ({ column }) => (
         <HeaderWithType column={column} type={col.type} text={col.label} />
       ),
-      enableSorting: col.enableSorting ?? true, // Default to true if not specified
-      size: col.width || 120, // Default width
+      enableSorting: col.enableSorting ?? true,
+      size: col.width || 120,
       cell: ({ row }) => {
         const value = row.getValue(col.key as string) as string | number;
         return (
@@ -184,8 +214,10 @@ export function AdvancedDataTable<TData>({
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
+    onColumnVisibilityChange: setColumnVisibility,
     state: {
       sorting,
+      columnVisibility,
     },
     initialState: {
       pagination: {
@@ -196,6 +228,44 @@ export function AdvancedDataTable<TData>({
 
   return (
     <div className="space-y-4">
+      {/* View / Column Toggle Button */}
+      <div className="flex justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="ml-auto h-8 flex">
+              <Settings2 className="mr-2 h-4 w-4" />
+              View
+            </Button>
+          </DropdownMenuTrigger>
+          
+          {/* Added max-h-[300px] and overflow-y-auto here */}
+          <DropdownMenuContent 
+            align="end" 
+            className="w-[180px] max-h-[300px] overflow-y-auto"
+          >
+            <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {table
+              .getAllColumns()
+              .filter((column) => typeof column.accessorFn !== "undefined" && column.getCanHide())
+              .map((column) => {
+                const colLabel = columnConfigs.find(c => c.key === column.id)?.label || column.id;
+                
+                return (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    className="capitalize"
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                  >
+                    {colLabel}
+                  </DropdownMenuCheckboxItem>
+                );
+              })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
       <div className="rounded-md border overflow-x-auto bg-background">
         <TooltipProvider>
           <Table className="table-fixed w-max min-w-full border-collapse border border-border">
@@ -258,7 +328,6 @@ export function AdvancedDataTable<TData>({
         </TooltipProvider>
       </div>
 
-      {/* Pagination */}
       <div className="flex items-center justify-between px-2">
         <div className="text-xs text-muted-foreground">
           Page {table.getState().pagination.pageIndex + 1} of{" "}
