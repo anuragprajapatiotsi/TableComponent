@@ -8,6 +8,7 @@ import {
   getCoreRowModel,
   getPaginationRowModel,
   getSortedRowModel,
+  getFilteredRowModel,
   SortingState,
   VisibilityState,
   useReactTable,
@@ -22,17 +23,22 @@ import {
   ChevronLeft,
   ChevronRight,
   Settings2,
+  X,
+  Filter,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import {
   Table,
@@ -68,6 +74,153 @@ interface AdvancedDataTableProps<TData> {
 
 // --- Internal Helper Components ---
 
+const FilterMenu = <TData,>({
+  column,
+  type,
+}: {
+  column: Column<TData, unknown>;
+  type: "string" | "number";
+}) => {
+  const filterValue = (column.getFilterValue() as any) || {
+    operator: type === "number" ? "eq" : "contains",
+    value: "",
+  };
+
+  const [operator, setOperator] = React.useState(filterValue.operator);
+  const [value, setValue] = React.useState(filterValue.value);
+
+  const handleFilterChange = (newOperator: string, newValue: string) => {
+    setOperator(newOperator);
+    setValue(newValue);
+    column.setFilterValue({ operator: newOperator, value: newValue });
+  };
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <Settings2 className="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
+        Filter
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="p-3 w-52">
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">
+              Operator
+            </label>
+            <select
+              className="w-full h-8 text-xs border rounded-md bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring"
+              value={operator}
+              onChange={(e) => handleFilterChange(e.target.value, value)}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {type === "number" ? (
+                <>
+                  <option value="eq">Equal To (=)</option>
+                  <option value="gt">Greater Than (&gt;)</option>
+                  <option value="lt">Less Than (&lt;)</option>
+                </>
+              ) : (
+                <>
+                  <option value="contains">Contains</option>
+                  <option value="startsWith">Starts With</option>
+                  <option value="endsWith">Ends With</option>
+                </>
+              )}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">
+              Value
+            </label>
+            <input
+              type={type === "number" ? "number" : "text"}
+              className="w-full h-8 text-xs border rounded-md bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring"
+              value={value}
+              onChange={(e) => handleFilterChange(operator, e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              placeholder="Filter..."
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="w-full h-7 text-xs"
+            onClick={() => {
+              setOperator(type === "number" ? "eq" : "contains");
+              setValue("");
+              column.setFilterValue(undefined);
+            }}
+          >
+            Clear Filter
+          </Button>
+        </div>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+};
+
+const FilterSummary = <TData,>({
+  table,
+}: {
+  table: ReturnType<typeof useReactTable<TData>>;
+}) => {
+  const filters = table.getState().columnFilters;
+  if (filters.length === 0) return null;
+
+  const operatorMap: Record<string, string> = {
+    eq: "=",
+    gt: ">",
+    lt: "<",
+    contains: "contains",
+    startsWith: "starts with",
+    endsWith: "ends with",
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-2 p-2 bg-muted/20 border rounded-md">
+      <span className="text-xs font-medium text-muted-foreground mr-2">
+        Active Filters:
+      </span>
+      {filters.map((filter) => {
+        const column = table.getColumn(filter.id);
+        const filterValue = filter.value as { operator: string; value: string };
+        const label = column?.columnDef.header as any;
+        // Note: Header might be a function, but we are using column configs to get label usually.
+        // For simplicity, we can use the ID or try to get the label from the config if passed active.
+        // But table.getAllColumns() has the info.
+
+        return (
+          <Badge
+            key={filter.id}
+            variant="secondary"
+            className="flex items-center gap-1.5 px-2 py-1 font-normal"
+          >
+            <span className="font-semibold">{filter.id}:</span>
+            <span className="text-muted-foreground">
+              {operatorMap[filterValue.operator] || filterValue.operator}
+            </span>
+            <span>{filterValue.value}</span>
+            <button
+              onClick={() => column?.setFilterValue(undefined)}
+              className="ml-1 hover:text-destructive focus:outline-none"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        );
+      })}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+        onClick={() => table.resetColumnFilters()}
+      >
+        Clear All
+      </Button>
+    </div>
+  );
+};
+
 const HeaderWithType = <TData,>({
   column,
   type,
@@ -79,6 +232,7 @@ const HeaderWithType = <TData,>({
 }) => {
   const [open, setOpen] = React.useState(false);
   const isSorted = column.getIsSorted();
+  const isFiltered = column.getFilterValue() !== undefined;
 
   return (
     <div className="group flex items-center w-full gap-1.5">
@@ -96,8 +250,10 @@ const HeaderWithType = <TData,>({
             variant="ghost"
             size="sm"
             className={cn(
-              "h-6 w-6 p-0 ml-auto transition-opacity",
-              isSorted || open ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              "h-6 w-6 p-0 ml-auto transition-opacity relative",
+              isSorted || open || isFiltered
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100",
             )}
           >
             <span className="sr-only">Open menu</span>
@@ -115,7 +271,7 @@ const HeaderWithType = <TData,>({
           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
             Sort Options
           </DropdownMenuLabel>
-          
+
           <DropdownMenuItem onClick={() => column.toggleSorting(false)}>
             <ArrowUp className="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
             Ascending
@@ -137,6 +293,10 @@ const HeaderWithType = <TData,>({
 
           <DropdownMenuSeparator />
 
+          <FilterMenu column={column} type={type} />
+
+          <DropdownMenuSeparator />
+
           <DropdownMenuItem onClick={() => column.toggleVisibility(false)}>
             <EyeOff className="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
             Hide Column
@@ -155,7 +315,9 @@ export function AdvancedDataTable<TData>({
   defaultPageSize = 10,
 }: AdvancedDataTableProps<TData>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] =
+    React.useState<VisibilityState>({});
+  const [columnFilters, setColumnFilters] = React.useState<any[]>([]);
 
   const tableColumns = React.useMemo<ColumnDef<TData>[]>(() => {
     // Index Column
@@ -184,6 +346,44 @@ export function AdvancedDataTable<TData>({
       ),
       enableSorting: col.enableSorting ?? true,
       size: col.width || 120,
+      filterFn: (row, columnId, filterValue: any) => {
+        if (!filterValue || !filterValue.value) return true;
+
+        const rowValue = row.getValue(columnId);
+        const { operator, value } = filterValue;
+
+        if (col.type === "number") {
+          const numRowValue = Number(rowValue);
+          const numValue = Number(value);
+
+          if (isNaN(numValue)) return true;
+
+          switch (operator) {
+            case "gt":
+              return numRowValue > numValue;
+            case "lt":
+              return numRowValue < numValue;
+            case "eq":
+              return numRowValue === numValue;
+            default:
+              return true;
+          }
+        } else {
+          const strRowValue = String(rowValue).toLowerCase();
+          const strValue = String(value).toLowerCase();
+
+          switch (operator) {
+            case "contains":
+              return strRowValue.includes(strValue);
+            case "startsWith":
+              return strRowValue.startsWith(strValue);
+            case "endsWith":
+              return strRowValue.endsWith(strValue);
+            default:
+              return true;
+          }
+        }
+      },
       cell: ({ row }) => {
         const value = row.getValue(col.key as string) as string | number;
         return (
@@ -213,11 +413,14 @@ export function AdvancedDataTable<TData>({
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
+    onColumnFiltersChange: setColumnFilters,
     state: {
       sorting,
       columnVisibility,
+      columnFilters,
     },
     initialState: {
       pagination: {
@@ -228,43 +431,8 @@ export function AdvancedDataTable<TData>({
 
   return (
     <div className="space-y-4">
-      {/* View / Column Toggle Button */}
-      <div className="flex justify-end">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="ml-auto h-8 flex">
-              <Settings2 className="mr-2 h-4 w-4" />
-              View
-            </Button>
-          </DropdownMenuTrigger>
-          
-          {/* Added max-h-[300px] and overflow-y-auto here */}
-          <DropdownMenuContent 
-            align="end" 
-            className="w-[180px] max-h-[300px] overflow-y-auto"
-          >
-            <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {table
-              .getAllColumns()
-              .filter((column) => typeof column.accessorFn !== "undefined" && column.getCanHide())
-              .map((column) => {
-                const colLabel = columnConfigs.find(c => c.key === column.id)?.label || column.id;
-                
-                return (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    className="capitalize"
-                    checked={column.getIsVisible()}
-                    onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                  >
-                    {colLabel}
-                  </DropdownMenuCheckboxItem>
-                );
-              })}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      {/* Filter Summary Row */}
+      <FilterSummary table={table} />
 
       <div className="rounded-md border overflow-x-auto bg-background">
         <TooltipProvider>
