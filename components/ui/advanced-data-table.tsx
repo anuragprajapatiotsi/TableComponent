@@ -12,6 +12,7 @@ import {
   SortingState,
   VisibilityState,
   useReactTable,
+  PaginationState,
 } from "@tanstack/react-table";
 import {
   MoreVertical,
@@ -24,7 +25,7 @@ import {
   ChevronRight,
   Settings2,
   X,
-  Filter,
+  Loader2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -36,9 +37,9 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   DropdownMenuLabel,
-  DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
+  DropdownMenuSub,
 } from "@/components/ui/dropdown-menu";
 import {
   Table,
@@ -58,18 +59,77 @@ import { cn } from "@/lib/utils";
 
 // --- Types ---
 
+export type ColumnType = "string" | "number" | "boolean" | "date" | "datetime";
+
 export type ColumnConfig<TData> = {
   key: keyof TData;
   label: string;
-  type: "string" | "number";
+  type: ColumnType;
   enableSorting?: boolean;
   width?: number;
 };
 
 interface AdvancedDataTableProps<TData> {
-  data: TData[];
-  columns: ColumnConfig<TData>[];
+  data?: TData[];
+  columns?: ColumnConfig<TData>[];
+  endpoint?: string;
   defaultPageSize?: number;
+  params?: Record<string, string | number | boolean>;
+}
+
+// --- Filter Configuration ---
+
+const FILTER_OPERATORS: Record<ColumnType, { label: string; value: string }[]> =
+  {
+    string: [
+      { label: "Contains", value: "contains" },
+      { label: "Equal To", value: "eq" },
+      { label: "Starts With", value: "starts_with" },
+      { label: "Ends With", value: "ends_with" },
+    ],
+    number: [
+      { label: "Equal To (=)", value: "eq" },
+      { label: "Greater Than (>)", value: "gt" },
+      { label: "Less Than (<)", value: "lt" },
+      { label: "Greater Than or Equal (>=)", value: "gte" },
+      { label: "Less Than or Equal (<=)", value: "lte" },
+    ],
+    date: [
+      { label: "Equal To", value: "eq" },
+      { label: "Before", value: "lt" },
+      { label: "After", value: "gt" },
+      { label: "On or After", value: "gte" },
+      { label: "On or Before", value: "lte" },
+    ],
+    datetime: [
+      { label: "Equal To", value: "eq" },
+      { label: "Before", value: "lt" },
+      { label: "After", value: "gt" },
+      { label: "On or After", value: "gte" },
+      { label: "On or Before", value: "lte" },
+    ],
+    boolean: [
+      { label: "True", value: "eq" }, // For boolean, typically just direct equality checks or "is true/false"
+    ],
+  };
+
+function useDebouncedCallback<T extends (...args: any[]) => void>(
+  callback: T,
+  delay: number,
+) {
+  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  return React.useCallback(
+    (...args: Parameters<T>) => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => {
+        callback(...args);
+      }, delay);
+    },
+    [callback, delay],
+  );
 }
 
 // --- Internal Helper Components ---
@@ -79,20 +139,31 @@ const FilterMenu = <TData,>({
   type,
 }: {
   column: Column<TData, unknown>;
-  type: "string" | "number";
+  type: ColumnType;
 }) => {
+  const options = FILTER_OPERATORS[type] || FILTER_OPERATORS.string;
+  const defaultOperator = options[0].value;
+
   const filterValue = (column.getFilterValue() as any) || {
-    operator: type === "number" ? "eq" : "contains",
+    operator: defaultOperator,
     value: "",
   };
 
   const [operator, setOperator] = React.useState(filterValue.operator);
   const [value, setValue] = React.useState(filterValue.value);
 
+  const debouncedSetFilter = useDebouncedCallback(
+    (op: string, val: string) => {
+      if (!val || String(val).trim() === "") return;
+      column.setFilterValue({ operator: op, value: val });
+    },
+    400, // debounce delay (ms)
+  );
+
   const handleFilterChange = (newOperator: string, newValue: string) => {
     setOperator(newOperator);
     setValue(newValue);
-    column.setFilterValue({ operator: newOperator, value: newValue });
+    debouncedSetFilter(newOperator, newValue);
   };
 
   return (
@@ -113,40 +184,53 @@ const FilterMenu = <TData,>({
               onChange={(e) => handleFilterChange(e.target.value, value)}
               onClick={(e) => e.stopPropagation()}
             >
-              {type === "number" ? (
-                <>
-                  <option value="eq">Equal To (=)</option>
-                  <option value="gt">Greater Than (&gt;)</option>
-                  <option value="lt">Less Than (&lt;)</option>
-                </>
-              ) : (
-                <>
-                  <option value="contains">Contains</option>
-                  <option value="startsWith">Starts With</option>
-                  <option value="endsWith">Ends With</option>
-                </>
-              )}
+              {options.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">
               Value
             </label>
-            <input
-              type={type === "number" ? "number" : "text"}
-              className="w-full h-8 text-xs border rounded-md bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring"
-              value={value}
-              onChange={(e) => handleFilterChange(operator, e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              placeholder="Filter..."
-            />
+            {type === "boolean" ? (
+              <select
+                className="w-full h-8 text-xs border rounded-md bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring"
+                value={value}
+                onChange={(e) => handleFilterChange(operator, e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <option value="">Select...</option>
+                <option value="true">True</option>
+                <option value="false">False</option>
+              </select>
+            ) : (
+              <input
+                type={
+                  type === "number"
+                    ? "number"
+                    : type === "date"
+                      ? "date"
+                      : type === "datetime"
+                        ? "datetime-local"
+                        : "text"
+                }
+                className="w-full h-8 text-xs border rounded-md bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring"
+                value={value}
+                onChange={(e) => handleFilterChange(operator, e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                placeholder="Filter..."
+              />
+            )}
           </div>
           <Button
             size="sm"
             variant="secondary"
             className="w-full h-7 text-xs"
             onClick={() => {
-              setOperator(type === "number" ? "eq" : "contains");
+              setOperator(defaultOperator);
               setValue("");
               column.setFilterValue(undefined);
             }}
@@ -167,13 +251,19 @@ const FilterSummary = <TData,>({
   const filters = table.getState().columnFilters;
   if (filters.length === 0) return null;
 
+  // Reverse lookup for operator labels can be tricky if we don't know the type here easily.
+  // Ideally, we'd pass column configs to this component or look them up from table state if stored.
+  // For simplicity, we can just show the operator code or a generic map.
+  // Let's optimize by just showing the operator string for now, or a best-effort map.
   const operatorMap: Record<string, string> = {
     eq: "=",
     gt: ">",
     lt: "<",
+    gte: ">=",
+    lte: "<=",
     contains: "contains",
-    startsWith: "starts with",
-    endsWith: "ends with",
+    starts_with: "starts with",
+    ends_with: "ends with",
   };
 
   return (
@@ -184,10 +274,8 @@ const FilterSummary = <TData,>({
       {filters.map((filter) => {
         const column = table.getColumn(filter.id);
         const filterValue = filter.value as { operator: string; value: string };
-        const label = column?.columnDef.header as any;
-        // Note: Header might be a function, but we are using column configs to get label usually.
-        // For simplicity, we can use the ID or try to get the label from the config if passed active.
-        // But table.getAllColumns() has the info.
+        const opLabel =
+          operatorMap[filterValue.operator] || filterValue.operator;
 
         return (
           <Badge
@@ -196,9 +284,7 @@ const FilterSummary = <TData,>({
             className="flex items-center gap-1.5 px-2 py-1 font-normal"
           >
             <span className="font-semibold">{filter.id}:</span>
-            <span className="text-muted-foreground">
-              {operatorMap[filterValue.operator] || filterValue.operator}
-            </span>
+            <span className="text-muted-foreground">{opLabel}</span>
             <span>{filterValue.value}</span>
             <button
               onClick={() => column?.setFilterValue(undefined)}
@@ -227,17 +313,26 @@ const HeaderWithType = <TData,>({
   text,
 }: {
   column: Column<TData, unknown>;
-  type: "string" | "number";
+  type: ColumnType;
   text: string;
 }) => {
   const [open, setOpen] = React.useState(false);
   const isSorted = column.getIsSorted();
   const isFiltered = column.getFilterValue() !== undefined;
 
+  const typeLabel =
+    type === "number"
+      ? "123"
+      : type === "boolean"
+        ? "T/F"
+        : type === "date" || type === "datetime"
+          ? "DATE"
+          : "ABC";
+
   return (
     <div className="group flex items-center w-full gap-1.5">
       <span className="text-[10px] uppercase text-muted-foreground/70 font-mono tracking-tighter">
-        {type === "number" ? "123" : "ABC"}
+        {typeLabel}
       </span>
 
       <span className="font-medium text-muted-foreground truncate flex-1">
@@ -310,14 +405,118 @@ const HeaderWithType = <TData,>({
 // --- Main Component ---
 
 export function AdvancedDataTable<TData>({
-  data,
-  columns: columnConfigs,
+  data: initialData,
+  columns: initialColumns,
+  endpoint,
   defaultPageSize = 10,
+  params = {},
 }: AdvancedDataTableProps<TData>) {
+  // State for API mode
+  const [data, setData] = React.useState<TData[]>(initialData || []);
+  const [columns, setColumns] = React.useState<ColumnConfig<TData>[]>(
+    initialColumns || [],
+  );
+  const [loading, setLoading] = React.useState(false);
+  const [totalRows, setTotalRows] = React.useState(0);
+
+  // Table State
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({});
   const [columnFilters, setColumnFilters] = React.useState<any[]>([]);
+  const [pagination, setPagination] = React.useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: defaultPageSize,
+  });
+
+  const fetchData = React.useCallback(async () => {
+    if (!endpoint) return;
+
+    setLoading(true);
+    try {
+      const { pageIndex, pageSize } = pagination;
+      const sort = sorting[0];
+
+      const queryParams = new URLSearchParams();
+      queryParams.set("limit", String(pageSize));
+      queryParams.set("offset", String(pageIndex * pageSize));
+
+      // Backend Sorting
+      if (sort) {
+        queryParams.set("sort_by", sort.id);
+        queryParams.set("sort_dir", sort.desc ? "desc" : "asc");
+      }
+
+      // Backend Filtering
+      if (columnFilters.length > 0) {
+        const filters = columnFilters
+          .map((filter) => ({
+            field: filter.id,
+            op: (filter.value as any)?.operator,
+            value: (filter.value as any)?.value,
+          }))
+          .filter(
+            (f) =>
+              f.field &&
+              f.op &&
+              f.value !== undefined &&
+              f.value !== null &&
+              String(f.value).trim() !== "",
+          );
+
+        if (filters.length > 0) {
+          queryParams.set("filters", JSON.stringify(filters));
+        }
+      }
+
+      // Extra params
+      Object.entries(params).forEach(([key, value]) => {
+        queryParams.set(key, String(value));
+      });
+
+      const response = await fetch(`${endpoint}?${queryParams.toString()}`);
+
+      if (!response.ok) {
+        try {
+          const errorData = await response.json();
+          console.error(
+            "AdvancedDataTable Fetch Error:",
+            JSON.stringify(errorData, null, 2),
+          );
+        } catch (e) {
+          console.error(
+            "AdvancedDataTable Fetch Error:",
+            response.status,
+            response.statusText,
+          );
+        }
+        return;
+      }
+
+      const result = await response.json();
+
+      if (result.columns) {
+        setColumns(result.columns);
+      }
+      if (result.data) {
+        setData(result.data);
+      }
+      if (result.meta) {
+        setTotalRows(result.meta.total);
+      }
+    } catch (error) {
+      console.error("Failed to fetch data:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [endpoint, pagination, sorting, columnFilters, params]);
+
+  // Initial Fetch & Refetch on state change
+  React.useEffect(() => {
+    if (endpoint) {
+      fetchData();
+    }
+  }, [fetchData, endpoint]);
 
   const tableColumns = React.useMemo<ColumnDef<TData>[]>(() => {
     // Index Column
@@ -330,7 +529,9 @@ export function AdvancedDataTable<TData>({
       ),
       cell: ({ row }) => (
         <div className="text-center font-medium text-muted-foreground">
-          {row.index + 1}
+          {endpoint
+            ? pagination.pageIndex * pagination.pageSize + row.index + 1
+            : row.index + 1}
         </div>
       ),
       enableSorting: false,
@@ -339,7 +540,7 @@ export function AdvancedDataTable<TData>({
     };
 
     // Data Columns
-    const dataCols: ColumnDef<TData>[] = columnConfigs.map((col) => ({
+    const dataCols: ColumnDef<TData>[] = columns.map((col) => ({
       accessorKey: col.key as string,
       header: ({ column }) => (
         <HeaderWithType column={column} type={col.type} text={col.label} />
@@ -347,6 +548,9 @@ export function AdvancedDataTable<TData>({
       enableSorting: col.enableSorting ?? true,
       size: col.width || 120,
       filterFn: (row, columnId, filterValue: any) => {
+        // If endpoint is provided, filtering is done server-side
+        if (endpoint) return true;
+
         if (!filterValue || !filterValue.value) return true;
 
         const rowValue = row.getValue(columnId);
@@ -363,6 +567,10 @@ export function AdvancedDataTable<TData>({
               return numRowValue > numValue;
             case "lt":
               return numRowValue < numValue;
+            case "gte":
+              return numRowValue >= numValue;
+            case "lte":
+              return numRowValue <= numValue;
             case "eq":
               return numRowValue === numValue;
             default:
@@ -375,10 +583,12 @@ export function AdvancedDataTable<TData>({
           switch (operator) {
             case "contains":
               return strRowValue.includes(strValue);
-            case "startsWith":
+            case "starts_with":
               return strRowValue.startsWith(strValue);
-            case "endsWith":
+            case "ends_with":
               return strRowValue.endsWith(strValue);
+            case "eq":
+              return strRowValue === strValue;
             default:
               return true;
           }
@@ -400,11 +610,17 @@ export function AdvancedDataTable<TData>({
     }));
 
     return [indexCol, ...dataCols];
-  }, [columnConfigs]);
+  }, [columns, endpoint, pagination.pageIndex, pagination.pageSize]);
 
   const table = useReactTable({
     data,
     columns: tableColumns,
+    pageCount: endpoint
+      ? Math.ceil(totalRows / pagination.pageSize) || 1
+      : undefined,
+    manualPagination: !!endpoint,
+    manualSorting: !!endpoint,
+    manualFiltering: !!endpoint,
     defaultColumn: {
       size: 120,
       minSize: 50,
@@ -417,15 +633,12 @@ export function AdvancedDataTable<TData>({
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
     onColumnFiltersChange: setColumnFilters,
+    onPaginationChange: setPagination,
     state: {
       sorting,
       columnVisibility,
       columnFilters,
-    },
-    initialState: {
-      pagination: {
-        pageSize: defaultPageSize,
-      },
+      pagination,
     },
   });
 
@@ -434,7 +647,12 @@ export function AdvancedDataTable<TData>({
       {/* Filter Summary Row */}
       <FilterSummary table={table} />
 
-      <div className="rounded-md border overflow-x-auto bg-background">
+      <div className="rounded-md border overflow-x-auto bg-background relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center backdrop-blur-[1px]">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        )}
         <TooltipProvider>
           <Table className="table-fixed w-max min-w-full border-collapse border border-border">
             <TableHeader>
@@ -487,7 +705,7 @@ export function AdvancedDataTable<TData>({
                     colSpan={tableColumns.length}
                     className="h-24 text-center"
                   >
-                    No results.
+                    {loading ? "Loading..." : "No results."}
                   </TableCell>
                 </TableRow>
               )}
