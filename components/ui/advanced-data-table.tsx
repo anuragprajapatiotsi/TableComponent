@@ -119,7 +119,7 @@ function useDebouncedCallback<T extends (...args: any[]) => void>(
 ) {
   const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  return React.useCallback(
+  const debouncedCallback = React.useCallback(
     (...args: Parameters<T>) => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -130,6 +130,16 @@ function useDebouncedCallback<T extends (...args: any[]) => void>(
     },
     [callback, delay],
   );
+
+  React.useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return debouncedCallback;
 }
 
 // --- Internal Helper Components ---
@@ -154,8 +164,11 @@ const FilterMenu = <TData,>({
 
   const debouncedSetFilter = useDebouncedCallback(
     (op: string, val: string) => {
-      if (!val || String(val).trim() === "") return;
-      column.setFilterValue({ operator: op, value: val });
+      if (val === undefined || val === null || String(val).trim() === "") {
+        column.setFilterValue(undefined); // Clear filter if empty
+        return;
+      }
+      column.setFilterValue({ operator: op, value: val, type });
     },
     400, // debounce delay (ms)
   );
@@ -450,19 +463,36 @@ export function AdvancedDataTable<TData>({
       // Backend Filtering
       if (columnFilters.length > 0) {
         const filters = columnFilters
-          .map((filter) => ({
-            field: filter.id,
-            op: (filter.value as any)?.operator,
-            value: (filter.value as any)?.value,
-          }))
-          .filter(
-            (f) =>
-              f.field &&
-              f.op &&
-              f.value !== undefined &&
-              f.value !== null &&
-              String(f.value).trim() !== "",
-          );
+          .map((filter) => {
+            const filterValue = filter.value as any;
+            const op = filterValue?.operator;
+            let value = filterValue?.value;
+            const type = filterValue?.type;
+
+            if (
+              value === undefined ||
+              value === null ||
+              String(value).trim() === ""
+            ) {
+              return null;
+            }
+
+            if (type === "number") {
+              const numValue = Number(value);
+              if (!isNaN(numValue)) {
+                value = numValue;
+              } else {
+                return null;
+              }
+            }
+
+            return {
+              field: filter.id,
+              op,
+              value,
+            };
+          })
+          .filter((f) => f !== null);
 
         if (filters.length > 0) {
           queryParams.set("filters", JSON.stringify(filters));
@@ -496,7 +526,11 @@ export function AdvancedDataTable<TData>({
       const result = await response.json();
 
       if (result.columns) {
-        setColumns(result.columns);
+        setColumns((prev) => {
+          if (JSON.stringify(prev) === JSON.stringify(result.columns))
+            return prev;
+          return result.columns;
+        });
       }
       if (result.data) {
         setData(result.data);
@@ -629,7 +663,7 @@ export function AdvancedDataTable<TData>({
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
+    // getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
     onColumnFiltersChange: setColumnFilters,
