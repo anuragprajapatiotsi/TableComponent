@@ -10,6 +10,8 @@ import {
   getSortedRowModel,
   getFilteredRowModel,
   SortingState,
+  ColumnFiltersState,
+  OnChangeFn,
   VisibilityState,
   useReactTable,
   PaginationState,
@@ -23,6 +25,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Settings2,
   X,
   Loader2,
@@ -75,43 +79,56 @@ interface AdvancedDataTableProps<TData> {
   endpoint?: string;
   defaultPageSize?: number;
   params?: Record<string, string | number | boolean>;
+  // Controlled state for filters
+  columnFilters?: ColumnFiltersState;
+  onColumnFiltersChange?: OnChangeFn<ColumnFiltersState>;
+  // Callback when columns are loaded
+  onColumnsLoaded?: (cols: ColumnConfig<TData>[]) => void;
+  // UI toggles
+  hideHeaderFilters?: boolean;
+  hideFilterSummary?: boolean;
+  // Column Visibility
+  columnVisibility?: VisibilityState;
+  onColumnVisibilityChange?: OnChangeFn<VisibilityState>;
 }
 
 // --- Filter Configuration ---
 
-const FILTER_OPERATORS: Record<ColumnType, { label: string; value: string }[]> =
-  {
-    string: [
-      { label: "Contains", value: "contains" },
-      { label: "Equal To", value: "eq" },
-      { label: "Starts With", value: "starts_with" },
-      { label: "Ends With", value: "ends_with" },
-    ],
-    number: [
-      { label: "Equal To (=)", value: "eq" },
-      { label: "Greater Than (>)", value: "gt" },
-      { label: "Less Than (<)", value: "lt" },
-      { label: "Greater Than or Equal (>=)", value: "gte" },
-      { label: "Less Than or Equal (<=)", value: "lte" },
-    ],
-    date: [
-      { label: "Equal To", value: "eq" },
-      { label: "Before", value: "lt" },
-      { label: "After", value: "gt" },
-      { label: "On or After", value: "gte" },
-      { label: "On or Before", value: "lte" },
-    ],
-    datetime: [
-      { label: "Equal To", value: "eq" },
-      { label: "Before", value: "lt" },
-      { label: "After", value: "gt" },
-      { label: "On or After", value: "gte" },
-      { label: "On or Before", value: "lte" },
-    ],
-    boolean: [
-      { label: "True", value: "eq" }, // For boolean, typically just direct equality checks or "is true/false"
-    ],
-  };
+export const FILTER_OPERATORS: Record<
+  ColumnType,
+  { label: string; value: string }[]
+> = {
+  string: [
+    { label: "Contains", value: "contains" },
+    { label: "Equal To", value: "eq" },
+    { label: "Starts With", value: "starts_with" },
+    { label: "Ends With", value: "ends_with" },
+  ],
+  number: [
+    { label: "Equal To (=)", value: "eq" },
+    { label: "Greater Than (>)", value: "gt" },
+    { label: "Less Than (<)", value: "lt" },
+    { label: "Greater Than or Equal (>=)", value: "gte" },
+    { label: "Less Than or Equal (<=)", value: "lte" },
+  ],
+  date: [
+    { label: "Equal To", value: "eq" },
+    { label: "Before", value: "lt" },
+    { label: "After", value: "gt" },
+    { label: "On or After", value: "gte" },
+    { label: "On or Before", value: "lte" },
+  ],
+  datetime: [
+    { label: "Equal To", value: "eq" },
+    { label: "Before", value: "lt" },
+    { label: "After", value: "gt" },
+    { label: "On or After", value: "gte" },
+    { label: "On or Before", value: "lte" },
+  ],
+  boolean: [
+    { label: "True", value: "eq" }, // For boolean, typically just direct equality checks or "is true/false"
+  ],
+};
 
 function useDebouncedCallback<T extends (...args: any[]) => void>(
   callback: T,
@@ -324,10 +341,14 @@ const HeaderWithType = <TData,>({
   column,
   type,
   text,
+  hideHeaderFilters,
+  className,
 }: {
   column: Column<TData, unknown>;
   type: ColumnType;
   text: string;
+  hideHeaderFilters?: boolean;
+  className?: string;
 }) => {
   const [open, setOpen] = React.useState(false);
   const isSorted = column.getIsSorted();
@@ -343,7 +364,7 @@ const HeaderWithType = <TData,>({
           : "ABC";
 
   return (
-    <div className="group flex items-center w-full gap-1.5">
+    <div className={cn("group flex items-center w-full gap-1.5", className)}>
       <span className="text-[10px] uppercase text-muted-foreground/70 font-mono tracking-tighter">
         {typeLabel}
       </span>
@@ -401,7 +422,7 @@ const HeaderWithType = <TData,>({
 
           <DropdownMenuSeparator />
 
-          <FilterMenu column={column} type={type} />
+          {!hideHeaderFilters && <FilterMenu column={column} type={type} />}
 
           <DropdownMenuSeparator />
 
@@ -423,6 +444,13 @@ export function AdvancedDataTable<TData>({
   endpoint,
   defaultPageSize = 10,
   params = {},
+  columnFilters: controlledColumnFilters,
+  onColumnFiltersChange: setControlledColumnFilters,
+  onColumnsLoaded,
+  hideHeaderFilters = false,
+  hideFilterSummary = false,
+  columnVisibility: controlledColumnVisibility,
+  onColumnVisibilityChange: setControlledColumnVisibility,
 }: AdvancedDataTableProps<TData>) {
   // State for API mode
   const [data, setData] = React.useState<TData[]>(initialData || []);
@@ -434,9 +462,24 @@ export function AdvancedDataTable<TData>({
 
   // Table State
   const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [columnVisibility, setColumnVisibility] =
+
+  // Visibility State
+  const [internalColumnVisibility, setInternalColumnVisibility] =
     React.useState<VisibilityState>({});
-  const [columnFilters, setColumnFilters] = React.useState<any[]>([]);
+
+  const columnVisibility =
+    controlledColumnVisibility ?? internalColumnVisibility;
+  const setColumnVisibility =
+    setControlledColumnVisibility ?? setInternalColumnVisibility;
+
+  // Internal filter state if not controlled
+  const [internalColumnFilters, setInternalColumnFilters] =
+    React.useState<ColumnFiltersState>([]);
+
+  const columnFilters = controlledColumnFilters ?? internalColumnFilters;
+  const setColumnFilters =
+    setControlledColumnFilters ?? setInternalColumnFilters;
+
   const [pagination, setPagination] = React.useState<PaginationState>({
     pageIndex: 0,
     pageSize: defaultPageSize,
@@ -529,6 +572,10 @@ export function AdvancedDataTable<TData>({
         setColumns((prev) => {
           if (JSON.stringify(prev) === JSON.stringify(result.columns))
             return prev;
+
+          if (onColumnsLoaded) {
+            onColumnsLoaded(result.columns);
+          }
           return result.columns;
         });
       }
@@ -570,14 +617,20 @@ export function AdvancedDataTable<TData>({
       ),
       enableSorting: false,
       enableHiding: false,
-      size: 50,
+      size: 40, // Compact width for index
     };
 
     // Data Columns
     const dataCols: ColumnDef<TData>[] = columns.map((col) => ({
       accessorKey: col.key as string,
       header: ({ column }) => (
-        <HeaderWithType column={column} type={col.type} text={col.label} />
+        <HeaderWithType
+          column={column}
+          type={col.type}
+          text={col.label}
+          hideHeaderFilters={hideHeaderFilters}
+          className={col.type === "number" ? "justify-end" : ""}
+        />
       ),
       enableSorting: col.enableSorting ?? true,
       size: col.width || 120,
@@ -633,7 +686,14 @@ export function AdvancedDataTable<TData>({
         return (
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="truncate w-full">{value}</div>
+              <div
+                className={cn(
+                  "truncate w-full",
+                  col.type === "number" && "text-right font-mono",
+                )}
+              >
+                {value}
+              </div>
             </TooltipTrigger>
             <TooltipContent>
               <p>{value}</p>
@@ -677,11 +737,99 @@ export function AdvancedDataTable<TData>({
   });
 
   return (
-    <div className="space-y-4">
-      {/* Filter Summary Row */}
-      <FilterSummary table={table} />
+    <div className="h-full flex flex-col space-y-4">
+      {/* FilterSummary (placeholder for where it would be) */}
+      {/* <FilterSummary /> */}
 
-      <div className="rounded-md border overflow-x-auto bg-background relative">
+      <div className="flex items-center justify-between px-2 py-2 border-b bg-muted/10 shrink-0">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span>
+            Total{" "}
+            {endpoint ? totalRows : table.getFilteredRowModel().rows.length}{" "}
+            rows
+          </span>
+          <div className="flex items-center gap-2">
+            Rows per page:
+            <select
+              className="h-6 w-16 rounded border border-input bg-transparent px-1 text-xs"
+              value={table.getState().pagination.pageSize}
+              onChange={(e) => {
+                table.setPageSize(Number(e.target.value));
+              }}
+            >
+              {[10, 20, 30, 50, 100].map((pageSize) => (
+                <option key={pageSize} value={pageSize}>
+                  {pageSize}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs">
+            Page {table.getState().pagination.pageIndex + 1} of{" "}
+            {table.getPageCount()}
+            <span className="text-muted-foreground/50 mx-1">|</span>
+            Go to:
+            <input
+              type="number"
+              min={1}
+              max={table.getPageCount()}
+              defaultValue={table.getState().pagination.pageIndex + 1}
+              onChange={(e) => {
+                const page = e.target.value ? Number(e.target.value) - 1 : 0;
+                table.setPageIndex(page);
+              }}
+              className="h-6 w-12 rounded border border-input bg-transparent px-1 text-xs text-center"
+            />
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.setPageIndex(0)}
+              disabled={!table.getCanPreviousPage()}
+              className="h-8 w-8 p-0 lg:flex"
+            >
+              <span className="sr-only">Go to first page</span>
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+              className="h-8 w-8 p-0"
+            >
+              <span className="sr-only">Go to previous page</span>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+              className="h-8 w-8 p-0"
+            >
+              <span className="sr-only">Go to next page</span>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+              disabled={!table.getCanNextPage()}
+              className="h-8 w-8 p-0 lg:flex"
+            >
+              <span className="sr-only">Go to last page</span>
+              <ChevronsRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto rounded-md border bg-background relative">
         {loading && (
           <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center backdrop-blur-[1px]">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -689,13 +837,16 @@ export function AdvancedDataTable<TData>({
         )}
         <TooltipProvider>
           <Table className="table-fixed w-max min-w-full border-collapse border border-border">
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
               {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
+                <TableRow
+                  key={headerGroup.id}
+                  className="hover:bg-transparent border-b border-border shadow-[0_1px_0_0_theme(colors.border)]"
+                >
                   {headerGroup.headers.map((header) => (
                     <TableHead
                       key={header.id}
-                      className="h-9 px-2 border-r border-b border-border text-xs bg-muted/30"
+                      className="h-8 px-2 border-r border-border text-xs bg-muted/30 font-semibold text-foreground/70"
                       style={{ width: header.getSize() }}
                     >
                       {header.isPlaceholder
@@ -716,11 +867,12 @@ export function AdvancedDataTable<TData>({
                   <TableRow
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
+                    className="hover:bg-muted/30 data-[state=selected]:bg-muted/40 border-b border-border/50"
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell
                         key={cell.id}
-                        className="h-9 px-2 border-r border-b border-border text-xs p-0 [&>div]:px-2 [&>div]:flex [&>div]:items-center [&>div]:h-full"
+                        className="h-8 px-2 border-r border-border text-xs p-0 [&>div]:px-2 [&>div]:flex [&>div]:items-center [&>div]:h-full truncate"
                         style={{ width: cell.column.getSize() }}
                       >
                         <div style={{ width: cell.column.getSize() }}>
@@ -748,30 +900,91 @@ export function AdvancedDataTable<TData>({
         </TooltipProvider>
       </div>
 
-      <div className="flex items-center justify-between px-2">
-        <div className="text-xs text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount()}
+      <div className="flex items-center justify-between px-2 py-2 border-t bg-muted/10 shrink-0">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span>
+            Total{" "}
+            {endpoint ? totalRows : table.getFilteredRowModel().rows.length}{" "}
+            rows
+          </span>
+          <div className="flex items-center gap-2">
+            Rows per page:
+            <select
+              className="h-6 w-16 rounded border border-input bg-transparent px-1 text-xs"
+              value={table.getState().pagination.pageSize}
+              onChange={(e) => {
+                table.setPageSize(Number(e.target.value));
+              }}
+            >
+              {[10, 20, 30, 50, 100].map((pageSize) => (
+                <option key={pageSize} value={pageSize}>
+                  {pageSize}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-            className="h-8 w-8 p-0"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-            className="h-8 w-8 p-0"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs">
+            Page {table.getState().pagination.pageIndex + 1} of{" "}
+            {table.getPageCount()}
+            <span className="text-muted-foreground/50 mx-1">|</span>
+            Go to:
+            <input
+              type="number"
+              min={1}
+              max={table.getPageCount()}
+              defaultValue={table.getState().pagination.pageIndex + 1}
+              onChange={(e) => {
+                const page = e.target.value ? Number(e.target.value) - 1 : 0;
+                table.setPageIndex(page);
+              }}
+              className="h-6 w-12 rounded border border-input bg-transparent px-1 text-xs text-center"
+            />
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.setPageIndex(0)}
+              disabled={!table.getCanPreviousPage()}
+              className="h-8 w-8 p-0 lg:flex"
+            >
+              <span className="sr-only">Go to first page</span>
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+              className="h-8 w-8 p-0"
+            >
+              <span className="sr-only">Go to previous page</span>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+              className="h-8 w-8 p-0"
+            >
+              <span className="sr-only">Go to next page</span>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+              disabled={!table.getCanNextPage()}
+              className="h-8 w-8 p-0 lg:flex"
+            >
+              <span className="sr-only">Go to last page</span>
+              <ChevronsRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
