@@ -134,11 +134,11 @@ export default function Home() {
   const handleUpdateFilterRow = (index: number, field: string, value: any) => {
     const newFilters = [...pendingFilters];
     if (field === "id") {
-      // Reset value when column changes to avoid type mismatch
+      const col = columns.find((c) => String(c.key) === value);
       newFilters[index] = {
         ...newFilters[index],
         id: value,
-        value: { operator: "eq", value: "" },
+        value: { operator: "eq", value: "", type: col?.type || "string" },
       };
     } else if (field === "operator") {
       newFilters[index] = {

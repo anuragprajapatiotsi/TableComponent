@@ -569,14 +569,33 @@ export function AdvancedDataTable<TData>({
       const result = await response.json();
 
       if (result.columns) {
+        // Normalize column types
+        const normalizedColumns = result.columns.map((col: any) => {
+          let type = col.type;
+          if (
+            [
+              "integer",
+              "int",
+              "float",
+              "decimal",
+              "double",
+              "real",
+              "numeric",
+            ].includes(String(col.type).toLowerCase())
+          ) {
+            type = "number";
+          }
+          return { ...col, type };
+        });
+
         setColumns((prev) => {
-          if (JSON.stringify(prev) === JSON.stringify(result.columns))
+          if (JSON.stringify(prev) === JSON.stringify(normalizedColumns))
             return prev;
 
           if (onColumnsLoaded) {
-            onColumnsLoaded(result.columns);
+            onColumnsLoaded(normalizedColumns);
           }
-          return result.columns;
+          return normalizedColumns;
         });
       }
       if (result.data) {
