@@ -592,9 +592,6 @@ export function AdvancedDataTable<TData>({
           if (JSON.stringify(prev) === JSON.stringify(normalizedColumns))
             return prev;
 
-          if (onColumnsLoaded) {
-            onColumnsLoaded(normalizedColumns);
-          }
           return normalizedColumns;
         });
       }
@@ -610,6 +607,13 @@ export function AdvancedDataTable<TData>({
       setLoading(false);
     }
   }, [endpoint, pagination, sorting, columnFilters, params]);
+
+  // Synchronize columns with parent
+  React.useEffect(() => {
+    if (onColumnsLoaded) {
+      onColumnsLoaded(columns);
+    }
+  }, [columns, onColumnsLoaded]);
 
   // Initial Fetch & Refetch on state change
   React.useEffect(() => {

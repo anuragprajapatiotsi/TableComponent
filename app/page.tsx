@@ -190,16 +190,18 @@ export default function Home() {
 
   // --- Render ---
 
+  const tableParams = React.useMemo(() => ({ table: dataset }), [dataset]);
+
   return (
     <main className="min-h-screen bg-background flex flex-col overflow-hidden">
       {/* Top Toolbar */}
       {/* Enterprise Unified Toolbar (Single Row with Group Headers) */}
       <div className="flex flex-col bg-white border-b shrink-0 z-20 shadow-sm relative">
-        <div className="flex items-center justify-between px-4 py-2 gap-4 bg-blue-300 min-h-[72px]">
+        <div className="flex items-center justify-between px-4 py-2 gap-4 bg-blue-50/80 backdrop-blur-sm border-b border-blue-100 min-h-[72px]">
           {/* LEFT: View Mode & Sections */}
           <div className="flex items-center gap-6">
             {/* View Mode Toggle (Persistent Left) */}
-            <div className="flex bg-muted/20 p-1 rounded-lg border border-border/50 self-center">
+            <div className="flex bg-blue-100/50 p-1 rounded-lg border border-blue-200/50 self-center">
               <button
                 onClick={() => {
                   setMode("analysis");
@@ -209,17 +211,17 @@ export default function Home() {
                 className={cn(
                   "flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all",
                   mode === "analysis"
-                    ? "bg-white text-blue-600 shadow-sm border border-border/20"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                    ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-200"
+                    : "text-blue-600/70 hover:text-blue-800 hover:bg-blue-200/50",
                 )}
               >
                 <BarChart3
                   className={cn(
                     "h-4 w-4",
-                    mode === "analysis" ? "text-blue-600" : "",
+                    mode === "analysis" ? "text-blue-600" : "text-blue-600/70",
                   )}
                 />
-                Story
+                Analysis
               </button>
               <button
                 onClick={() => {
@@ -229,27 +231,27 @@ export default function Home() {
                 className={cn(
                   "flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all",
                   mode === "data"
-                    ? "bg-white text-blue-600 shadow-sm border border-border/20"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                    ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-200"
+                    : "text-blue-600/70 hover:text-blue-800 hover:bg-blue-200/50",
                 )}
               >
                 <Search
                   className={cn(
                     "h-4 w-4",
-                    mode === "data" ? "text-blue-600" : "",
+                    mode === "data" ? "text-blue-600" : "text-blue-600/70",
                   )}
                 />
                 Data
               </button>
             </div>
 
-            <div className="h-10 w-px bg-border/40 self-center" />
+            <div className="h-10 w-px bg-blue-200/50 self-center" />
 
             {/* --- SECTIONS --- */}
 
             {/* FILE SECTION */}
             <div className="flex flex-col gap-1 items-start">
-              <span className="text-[10px] font-semibold text-muted-foreground/80 uppercase tracking-wider px-1">
+              <span className="text-[10px] font-bold text-blue-900/60 uppercase tracking-wider px-1">
                 File
               </span>
               <div className="flex items-center gap-1">
@@ -259,7 +261,7 @@ export default function Home() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        className="h-9 w-9 text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50"
                       >
                         <Save className="h-5 w-5" />
                       </Button>
@@ -271,7 +273,7 @@ export default function Home() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        className="h-9 w-9 text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50"
                       >
                         <Share2 className="h-5 w-5" />
                       </Button>
@@ -283,7 +285,7 @@ export default function Home() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        className="h-9 w-9 text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50"
                       >
                         <Download className="h-5 w-5" />
                       </Button>
@@ -294,13 +296,13 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="h-10 w-px bg-border/40 self-center" />
+            <div className="h-10 w-px bg-blue-200/50 self-center" />
 
             {/* INSERT SECTION REMOVED as requested */}
 
             {/* TOOLS SECTION (Filter Prominent) */}
             <div className="flex flex-col gap-1 items-start">
-              <span className="text-[10px] font-semibold text-muted-foreground/80 uppercase tracking-wider px-1">
+              <span className="text-[10px] font-bold text-blue-900/60 uppercase tracking-wider px-1">
                 Tools
               </span>
               <div className="flex items-center gap-3">
@@ -314,16 +316,16 @@ export default function Home() {
                       className={cn(
                         "h-9 px-3 gap-2 transition-all font-medium border shadow-sm",
                         isFilterPopoverOpen || columnFilters.length > 0
-                          ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600"
-                          : "bg-white text-foreground hover:bg-muted/50 border-input",
+                          ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600 shadow-blue-100"
+                          : "bg-white text-blue-700 hover:bg-blue-50 border-blue-200",
                       )}
                     >
                       <Filter
                         className={cn(
                           "h-4.5 w-4.5",
                           isFilterPopoverOpen || columnFilters.length > 0
-                            ? "fill-white/20"
-                            : "",
+                            ? "fill-white/20 text-white"
+                            : "text-blue-600",
                         )}
                       />
                       <span>Filter</span>
@@ -335,22 +337,27 @@ export default function Home() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent
-                    className="w-[480px] p-0 shadow-xl"
+                    className="w-[480px] p-0 shadow-xl border-blue-100"
                     align="start"
                     sideOffset={8}
                   >
-                    <div className="p-3 border-b flex items-center justify-between bg-muted/10">
-                      <h4 className="font-semibold text-sm flex items-center gap-2">
+                    <div className="p-3 border-b border-blue-100 flex items-center justify-between bg-blue-50/50">
+                      <h4 className="font-semibold text-sm flex items-center gap-2 text-blue-900">
                         <Filter className="h-4 w-4 text-blue-600" />
                         Advanced Filters
                       </h4>
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 gap-1 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        className="h-7 gap-1 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-100/50"
                         onClick={handleAddFilterRow}
                       >
-                        <Plus className="h-3.5 w-3.5 stroke-[3px]" />
+                        <div className="relative mr-0.5 flex items-center">
+                          <Filter className="h-3.5 w-3.5" />
+                          <div className="absolute -bottom-1 -right-1 bg-blue-100 rounded-full p-[0.5px] border border-white flex items-center justify-center">
+                            <Plus className="h-1.5 w-1.5 text-blue-700 stroke-[4]" />
+                          </div>
+                        </div>
                         <span className="text-xs font-semibold">
                           Add Condition
                         </span>
@@ -358,14 +365,21 @@ export default function Home() {
                     </div>
                     <div className="p-4 space-y-3 max-h-[400px] overflow-y-auto bg-white">
                       {pendingFilters.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-8 text-sm text-muted-foreground gap-2">
+                        <div className="flex flex-col items-center justify-center py-8 text-sm text-blue-900/40 gap-2">
                           <Filter className="h-8 w-8 opacity-20" />
                           <p>No active filters</p>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={handleAddFilterRow}
+                            className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800 gap-2"
                           >
+                            <div className="relative flex items-center">
+                              <Filter className="h-3.5 w-3.5" />
+                              <div className="absolute -bottom-1 -right-1 bg-blue-100 rounded-full p-[0.5px] border border-white flex items-center justify-center">
+                                <Plus className="h-1.5 w-1.5 text-blue-700 stroke-[4]" />
+                              </div>
+                            </div>
                             Add Condition
                           </Button>
                         </div>
@@ -382,7 +396,7 @@ export default function Home() {
                           >
                             <div className="grid grid-cols-[140px_110px_1fr] gap-2 flex-1">
                               <select
-                                className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
                                 value={row.id}
                                 onChange={(e) =>
                                   handleUpdateFilterRow(
@@ -406,7 +420,7 @@ export default function Home() {
                               </select>
 
                               <select
-                                className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
                                 value={currentOp}
                                 onChange={(e) =>
                                   handleUpdateFilterRow(
@@ -425,7 +439,7 @@ export default function Home() {
                               </select>
 
                               <input
-                                className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-medium"
+                                className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400 font-medium"
                                 placeholder="Value..."
                                 value={currentVal}
                                 onChange={(e) =>
@@ -450,18 +464,19 @@ export default function Home() {
                         );
                       })}
                     </div>
-                    <div className="p-3 border-t bg-muted/5 flex justify-end gap-2">
+                    <div className="p-3 border-t border-blue-100 bg-blue-50/30 flex justify-end gap-2">
                       <Button
                         size="sm"
                         variant="ghost"
                         onClick={() => setIsFilterPopoverOpen(false)}
+                        className="text-blue-700 hover:text-blue-800 hover:bg-blue-100/50"
                       >
                         Cancel
                       </Button>
                       <Button
                         size="sm"
                         onClick={handleApplyFilters}
-                        className="bg-blue-600 hover:bg-blue-700 w-24"
+                        className="bg-blue-600 hover:bg-blue-700 w-24 text-white shadow-sm"
                       >
                         Apply
                       </Button>
@@ -475,7 +490,7 @@ export default function Home() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        className="h-9 w-9 text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50"
                       >
                         <Sigma className="h-5 w-5" />
                       </Button>
@@ -486,11 +501,11 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="h-10 w-px bg-border/40 self-center" />
+            <div className="h-10 w-px bg-blue-200/50 self-center" />
 
             {/* DATA SECTION */}
             <div className="flex flex-col gap-1 items-start">
-              <span className="text-[10px] font-semibold text-muted-foreground/80 uppercase tracking-wider px-1">
+              <span className="text-[10px] font-bold text-blue-900/60 uppercase tracking-wider px-1">
                 Data
               </span>
               <div className="flex items-center gap-1">
@@ -502,8 +517,8 @@ export default function Home() {
                       className={cn(
                         "h-9 w-9 transition-colors",
                         isColVisOpen
-                          ? "text-blue-600 bg-blue-50 border-blue-200"
-                          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                          ? "text-blue-700 bg-white border border-blue-200 shadow-sm"
+                          : "text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50",
                       )}
                     >
                       <BarChart3
@@ -514,20 +529,23 @@ export default function Home() {
                       />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent align="start" className="w-[200px] p-2">
+                  <PopoverContent
+                    align="start"
+                    className="w-[200px] p-2 border-blue-100"
+                  >
                     <div className="space-y-2">
-                      <h4 className="font-medium text-xs text-muted-foreground px-1 mb-2">
+                      <h4 className="font-medium text-xs text-blue-900 px-1 mb-2">
                         Toggle Columns
                       </h4>
                       <div className="grid gap-1.5 max-h-[300px] overflow-y-auto">
                         {columns.map((col) => (
                           <label
                             key={String(col.key)}
-                            className="flex items-center space-x-2 text-sm px-1 py-0.5 hover:bg-muted rounded cursor-pointer"
+                            className="flex items-center space-x-2 text-sm px-1 py-0.5 hover:bg-blue-50 rounded cursor-pointer"
                           >
                             <input
                               type="checkbox"
-                              className="rounded border-gray-300 text-primary focus:ring-primary h-3.5 w-3.5"
+                              className="rounded border-blue-300 text-blue-600 focus:ring-blue-400 h-3.5 w-3.5"
                               checked={
                                 columnVisibility[String(col.key)] !== false
                               }
@@ -538,7 +556,7 @@ export default function Home() {
                                 }));
                               }}
                             />
-                            <span className="truncate text-xs">
+                            <span className="truncate text-xs text-blue-900/80">
                               {col.label}
                             </span>
                           </label>
@@ -554,7 +572,7 @@ export default function Home() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        className="h-9 w-9 text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50"
                       >
                         <RotateCcw className="h-5 w-5" />
                       </Button>
@@ -576,7 +594,7 @@ export default function Home() {
                 "h-10 w-10 transition-colors rounded-full",
                 isAIChatOpen
                   ? "text-purple-600 bg-purple-50 border border-purple-200 shadow-sm"
-                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                  : "text-purple-600/70 hover:bg-purple-50 hover:text-purple-700",
               )}
               onClick={() => setIsAIChatOpen(!isAIChatOpen)}
             >
@@ -588,8 +606,8 @@ export default function Home() {
               />
             </Button>
 
-            <div className="flex items-center gap-2 bg-muted/20 px-3 py-1.5 rounded-md border border-border/40">
-              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+            <div className="flex items-center gap-2 bg-blue-100/30 px-3 py-1.5 rounded-md border border-blue-200/50">
+              <span className="text-xs text-blue-900/60 font-bold uppercase tracking-wider">
                 Dataset:
               </span>
               <DropdownMenu>
@@ -597,7 +615,7 @@ export default function Home() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-6 gap-2 font-normal text-foreground p-0 hover:bg-transparent"
+                    className="h-6 gap-2 font-normal text-blue-900 p-0 hover:bg-transparent"
                   >
                     <span className="truncate max-w-[120px] font-semibold">
                       {dataset}
@@ -605,12 +623,16 @@ export default function Home() {
                     <ChevronDown className="h-3 w-3 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[200px]">
+                <DropdownMenuContent
+                  align="end"
+                  className="w-[200px] border-blue-100"
+                >
                   {datasets.map((d) => (
                     <DropdownMenuCheckboxItem
                       key={d}
                       checked={dataset === d}
                       onCheckedChange={() => setDataset(d)}
+                      className="text-blue-900 focus:bg-blue-50 focus:text-blue-900"
                     >
                       {d}
                     </DropdownMenuCheckboxItem>
@@ -624,7 +646,7 @@ export default function Home() {
 
       {/* Filter Bar (Persistent) */}
       {dataset && columnFilters.length > 0 && (
-        <div className="bg-blue-300  border-b px-4 py-2 flex items-center gap-2 min-h-[44px] overflow-x-auto shrink-0">
+        <div className="bg-blue-50/50 backdrop-blur-sm border-b border-blue-100 px-4 py-2 flex items-center gap-2 min-h-[44px] overflow-x-auto shrink-0">
           <div className="flex items-center gap-2">
             {columnFilters.map((filter) => {
               const col = columns.find((c) => c.key === filter.id);
@@ -632,16 +654,16 @@ export default function Home() {
               return (
                 <div
                   key={filter.id}
-                  className="flex items-center bg-blue-50 border border-blue-200 rounded-sm shadow-sm h-7 group"
+                  className="flex items-center bg-white border border-blue-200 rounded-md shadow-sm h-7 group"
                 >
                   <button
                     onClick={() => setIsFilterPopoverOpen(true)}
-                    className="flex items-center px-2.5 h-full text-xs hover:bg-blue-100 transition-colors border-r border-blue-200"
+                    className="flex items-center px-2.5 h-full text-xs hover:bg-blue-50 transition-colors border-r border-blue-100 rounded-l-md"
                   >
                     <span className="font-semibold text-blue-700 mr-1.5">
                       {col?.label}
                     </span>
-                    <span className="text-blue-600 mr-1.5">
+                    <span className="text-blue-600/70 mr-1.5">
                       ({getOperatorLabel(filter.id, val.operator)})
                     </span>
                     <span className="font-medium text-blue-900">
@@ -654,7 +676,7 @@ export default function Home() {
                         prev.filter((f) => f.id !== filter.id),
                       )
                     }
-                    className="h-full px-1.5 hover:bg-blue-500 hover:text-white transition-colors rounded-r-sm text-blue-400"
+                    className="h-full px-1.5 hover:bg-red-50 hover:text-red-500 transition-colors rounded-r-md text-blue-300"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -664,7 +686,7 @@ export default function Home() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs text-muted-foreground hover:text-destructive"
+              className="h-7 text-xs text-blue-600/70 hover:text-red-600 hover:bg-red-50"
               onClick={() => {
                 setColumnFilters([]);
                 setPendingFilters([]);
@@ -684,7 +706,7 @@ export default function Home() {
             <div className="rounded-lg border bg-card shadow-sm h-full flex flex-col overflow-hidden">
               <AdvancedDataTable
                 endpoint="http://localhost:8000/table"
-                params={{ table: dataset }}
+                params={tableParams}
                 columnFilters={columnFilters}
                 onColumnFiltersChange={setColumnFilters}
                 onColumnsLoaded={setColumns}
@@ -701,7 +723,7 @@ export default function Home() {
                   <PlayCircle className="h-8 w-8 text-blue-500" />
                 </div>
                 <h3 className="font-medium text-lg text-foreground">
-                  Story Mode
+                  Analysis Mode
                 </h3>
                 <p className="text-sm max-w-sm mx-auto">
                   Build narratives and visualize your data.
