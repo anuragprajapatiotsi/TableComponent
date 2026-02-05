@@ -7,6 +7,7 @@ import {
   FILTER_OPERATORS,
   ColumnType,
 } from "@/components/ui/advanced-data-table";
+import SqlEditor from "@/components/SqlEditor";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -30,6 +31,7 @@ import {
   Download,
   Sigma,
   RotateCcw,
+  Database,
 } from "lucide-react";
 import { ColumnFiltersState, VisibilityState } from "@tanstack/react-table";
 import {
@@ -48,7 +50,7 @@ import { cn } from "@/lib/utils";
 
 export default function Home() {
   // --- State ---
-  const [mode, setMode] = React.useState<"data" | "analysis">("data");
+  const [mode, setMode] = React.useState<"data" | "analysis" | "sql">("data");
   const [dataset, setDataset] = React.useState("ipl_matches");
   const [datasets, setDatasets] = React.useState<string[]>(["ipl_matches"]);
 
@@ -243,6 +245,27 @@ export default function Home() {
                 />
                 Data
               </button>
+              <button
+                onClick={() => {
+                  setMode("sql");
+                  setIsFilterPopoverOpen(false);
+                  setIsAIChatOpen(false);
+                }}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all",
+                  mode === "sql"
+                    ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-200"
+                    : "text-blue-600/70 hover:text-blue-800 hover:bg-blue-200/50",
+                )}
+              >
+                <Database
+                  className={cn(
+                    "h-4 w-4",
+                    mode === "sql" ? "text-blue-600" : "text-blue-600/70",
+                  )}
+                />
+                SQL Editor
+              </button>
             </div>
 
             <div className="h-10 w-px bg-blue-200/50 self-center" />
@@ -301,287 +324,295 @@ export default function Home() {
             {/* INSERT SECTION REMOVED as requested */}
 
             {/* TOOLS SECTION (Filter Prominent) */}
-            <div className="flex flex-col gap-1 items-start">
-              <span className="text-[10px] font-bold text-blue-900/60 uppercase tracking-wider px-1">
-                Tools
-              </span>
-              <div className="flex items-center gap-3">
-                {/* Filter Button (Prominent) */}
-                <Popover
-                  open={isFilterPopoverOpen}
-                  onOpenChange={setIsFilterPopoverOpen}
-                >
-                  <PopoverTrigger asChild>
-                    <Button
-                      className={cn(
-                        "h-9 px-3 gap-2 transition-all font-medium border shadow-sm",
-                        isFilterPopoverOpen || columnFilters.length > 0
-                          ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600 shadow-blue-100"
-                          : "bg-white text-blue-700 hover:bg-blue-50 border-blue-200",
-                      )}
+            {mode !== "sql" && (
+              <>
+                <div className="flex flex-col gap-1 items-start">
+                  <span className="text-[10px] font-bold text-blue-900/60 uppercase tracking-wider px-1">
+                    Tools
+                  </span>
+                  <div className="flex items-center gap-3">
+                    {/* Filter Button (Prominent) */}
+                    <Popover
+                      open={isFilterPopoverOpen}
+                      onOpenChange={setIsFilterPopoverOpen}
                     >
-                      <Filter
-                        className={cn(
-                          "h-4.5 w-4.5",
-                          isFilterPopoverOpen || columnFilters.length > 0
-                            ? "fill-white/20 text-white"
-                            : "text-blue-600",
-                        )}
-                      />
-                      <span>Filter</span>
-                      {columnFilters.length > 0 && (
-                        <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
-                          {columnFilters.length}
-                        </span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-[480px] p-0 shadow-xl border-blue-100"
-                    align="start"
-                    sideOffset={8}
-                  >
-                    <div className="p-3 border-b border-blue-100 flex items-center justify-between bg-blue-50/50">
-                      <h4 className="font-semibold text-sm flex items-center gap-2 text-blue-900">
-                        <Filter className="h-4 w-4 text-blue-600" />
-                        Advanced Filters
-                      </h4>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 gap-1 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-100/50"
-                        onClick={handleAddFilterRow}
+                      <PopoverTrigger asChild>
+                        <Button
+                          className={cn(
+                            "h-9 px-3 gap-2 transition-all font-medium border shadow-sm",
+                            isFilterPopoverOpen || columnFilters.length > 0
+                              ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600 shadow-blue-100"
+                              : "bg-white text-blue-700 hover:bg-blue-50 border-blue-200",
+                          )}
+                        >
+                          <Filter
+                            className={cn(
+                              "h-4.5 w-4.5",
+                              isFilterPopoverOpen || columnFilters.length > 0
+                                ? "fill-white/20 text-white"
+                                : "text-blue-600",
+                            )}
+                          />
+                          <span>Filter</span>
+                          {columnFilters.length > 0 && (
+                            <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                              {columnFilters.length}
+                            </span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-[480px] p-0 shadow-xl border-blue-100"
+                        align="start"
+                        sideOffset={8}
                       >
-                        <div className="relative mr-0.5 flex items-center">
-                          <Filter className="h-3.5 w-3.5" />
-                          <div className="absolute -bottom-1 -right-1 bg-blue-100 rounded-full p-[0.5px] border border-white flex items-center justify-center">
-                            <Plus className="h-1.5 w-1.5 text-blue-700 stroke-[4]" />
-                          </div>
-                        </div>
-                        <span className="text-xs font-semibold">
-                          Add Condition
-                        </span>
-                      </Button>
-                    </div>
-                    <div className="p-4 space-y-3 max-h-[400px] overflow-y-auto bg-white">
-                      {pendingFilters.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-8 text-sm text-blue-900/40 gap-2">
-                          <Filter className="h-8 w-8 opacity-20" />
-                          <p>No active filters</p>
+                        <div className="p-3 border-b border-blue-100 flex items-center justify-between bg-blue-50/50">
+                          <h4 className="font-semibold text-sm flex items-center gap-2 text-blue-900">
+                            <Filter className="h-4 w-4 text-blue-600" />
+                            Advanced Filters
+                          </h4>
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="ghost"
+                            className="h-7 gap-1 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-100/50"
                             onClick={handleAddFilterRow}
-                            className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800 gap-2"
                           >
-                            <div className="relative flex items-center">
+                            <div className="relative mr-0.5 flex items-center">
                               <Filter className="h-3.5 w-3.5" />
                               <div className="absolute -bottom-1 -right-1 bg-blue-100 rounded-full p-[0.5px] border border-white flex items-center justify-center">
                                 <Plus className="h-1.5 w-1.5 text-blue-700 stroke-[4]" />
                               </div>
                             </div>
-                            Add Condition
+                            <span className="text-xs font-semibold">
+                              Add Condition
+                            </span>
                           </Button>
                         </div>
-                      )}
-                      {pendingFilters.map((row, index) => {
-                        const currentValue = (row.value as any) || {};
-                        const currentOp = currentValue.operator || "eq";
-                        const currentVal = currentValue.value || "";
-
-                        return (
-                          <div
-                            key={index}
-                            className="flex gap-2 items-start group animation-in fade-in slide-in-from-top-1"
-                          >
-                            <div className="grid grid-cols-[140px_110px_1fr] gap-2 flex-1">
-                              <select
-                                className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
-                                value={row.id}
-                                onChange={(e) =>
-                                  handleUpdateFilterRow(
-                                    index,
-                                    "id",
-                                    e.target.value,
-                                  )
-                                }
+                        <div className="p-4 space-y-3 max-h-[400px] overflow-y-auto bg-white">
+                          {pendingFilters.length === 0 && (
+                            <div className="flex flex-col items-center justify-center py-8 text-sm text-blue-900/40 gap-2">
+                              <Filter className="h-8 w-8 opacity-20" />
+                              <p>No active filters</p>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handleAddFilterRow}
+                                className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800 gap-2"
                               >
-                                <option value="" disabled>
-                                  Column
-                                </option>
-                                {columns.map((col) => (
-                                  <option
-                                    key={String(col.key)}
-                                    value={String(col.key)}
-                                  >
-                                    {col.label}
-                                  </option>
-                                ))}
-                              </select>
-
-                              <select
-                                className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
-                                value={currentOp}
-                                onChange={(e) =>
-                                  handleUpdateFilterRow(
-                                    index,
-                                    "operator",
-                                    e.target.value,
-                                  )
-                                }
-                                disabled={!row.id}
-                              >
-                                {getOperators(row.id).map((op) => (
-                                  <option key={op.value} value={op.value}>
-                                    {op.label}
-                                  </option>
-                                ))}
-                              </select>
-
-                              <input
-                                className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400 font-medium"
-                                placeholder="Value..."
-                                value={currentVal}
-                                onChange={(e) =>
-                                  handleUpdateFilterRow(
-                                    index,
-                                    "value",
-                                    e.target.value,
-                                  )
-                                }
-                                disabled={!row.id}
-                              />
+                                <div className="relative flex items-center">
+                                  <Filter className="h-3.5 w-3.5" />
+                                  <div className="absolute -bottom-1 -right-1 bg-blue-100 rounded-full p-[0.5px] border border-white flex items-center justify-center">
+                                    <Plus className="h-1.5 w-1.5 text-blue-700 stroke-[4]" />
+                                  </div>
+                                </div>
+                                Add Condition
+                              </Button>
                             </div>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-red-50"
-                              onClick={() => handleRemoveFilterRow(index)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="p-3 border-t border-blue-100 bg-blue-50/30 flex justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setIsFilterPopoverOpen(false)}
-                        className="text-blue-700 hover:text-blue-800 hover:bg-blue-100/50"
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={handleApplyFilters}
-                        className="bg-blue-600 hover:bg-blue-700 w-24 text-white shadow-sm"
-                      >
-                        Apply
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                          )}
+                          {pendingFilters.map((row, index) => {
+                            const currentValue = (row.value as any) || {};
+                            const currentOp = currentValue.operator || "eq";
+                            const currentVal = currentValue.value || "";
 
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="h-9 w-9 text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50"
-                      >
-                        <Sigma className="h-5 w-5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Formula</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            </div>
+                            return (
+                              <div
+                                key={index}
+                                className="flex gap-2 items-start group animation-in fade-in slide-in-from-top-1"
+                              >
+                                <div className="grid grid-cols-[140px_110px_1fr] gap-2 flex-1">
+                                  <select
+                                    className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
+                                    value={row.id}
+                                    onChange={(e) =>
+                                      handleUpdateFilterRow(
+                                        index,
+                                        "id",
+                                        e.target.value,
+                                      )
+                                    }
+                                  >
+                                    <option value="" disabled>
+                                      Column
+                                    </option>
+                                    {columns.map((col) => (
+                                      <option
+                                        key={String(col.key)}
+                                        value={String(col.key)}
+                                      >
+                                        {col.label}
+                                      </option>
+                                    ))}
+                                  </select>
 
-            <div className="h-10 w-px bg-blue-200/50 self-center" />
+                                  <select
+                                    className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
+                                    value={currentOp}
+                                    onChange={(e) =>
+                                      handleUpdateFilterRow(
+                                        index,
+                                        "operator",
+                                        e.target.value,
+                                      )
+                                    }
+                                    disabled={!row.id}
+                                  >
+                                    {getOperators(row.id).map((op) => (
+                                      <option key={op.value} value={op.value}>
+                                        {op.label}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  <input
+                                    className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400 font-medium"
+                                    placeholder="Value..."
+                                    value={currentVal}
+                                    onChange={(e) =>
+                                      handleUpdateFilterRow(
+                                        index,
+                                        "value",
+                                        e.target.value,
+                                      )
+                                    }
+                                    disabled={!row.id}
+                                  />
+                                </div>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-red-50"
+                                  onClick={() => handleRemoveFilterRow(index)}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="p-3 border-t border-blue-100 bg-blue-50/30 flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setIsFilterPopoverOpen(false)}
+                            className="text-blue-700 hover:text-blue-800 hover:bg-blue-100/50"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={handleApplyFilters}
+                            className="bg-blue-600 hover:bg-blue-700 w-24 text-white shadow-sm"
+                          >
+                            Apply
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="h-9 w-9 text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50"
+                          >
+                            <Sigma className="h-5 w-5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Formula</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+
+                <div className="h-10 w-px bg-blue-200/50 self-center" />
+              </>
+            )}
 
             {/* DATA SECTION */}
-            <div className="flex flex-col gap-1 items-start">
-              <span className="text-[10px] font-bold text-blue-900/60 uppercase tracking-wider px-1">
-                Data
-              </span>
-              <div className="flex items-center gap-1">
-                <Popover open={isColVisOpen} onOpenChange={setIsColVisOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={isColVisOpen ? "secondary" : "ghost"}
-                      size="icon-sm"
-                      className={cn(
-                        "h-9 w-9 transition-colors",
-                        isColVisOpen
-                          ? "text-blue-700 bg-white border border-blue-200 shadow-sm"
-                          : "text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50",
-                      )}
-                    >
-                      <BarChart3
-                        className={cn(
-                          "h-5 w-5 rotate-90",
-                          isColVisOpen ? "stroke-[2.5px]" : "stroke-[2px]",
-                        )}
-                      />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align="start"
-                    className="w-[200px] p-2 border-blue-100"
-                  >
-                    <div className="space-y-2">
-                      <h4 className="font-medium text-xs text-blue-900 px-1 mb-2">
-                        Toggle Columns
-                      </h4>
-                      <div className="grid gap-1.5 max-h-[300px] overflow-y-auto">
-                        {columns.map((col) => (
-                          <label
-                            key={String(col.key)}
-                            className="flex items-center space-x-2 text-sm px-1 py-0.5 hover:bg-blue-50 rounded cursor-pointer"
-                          >
-                            <input
-                              type="checkbox"
-                              className="rounded border-blue-300 text-blue-600 focus:ring-blue-400 h-3.5 w-3.5"
-                              checked={
-                                columnVisibility[String(col.key)] !== false
-                              }
-                              onChange={(e) => {
-                                setColumnVisibility((prev) => ({
-                                  ...prev,
-                                  [String(col.key)]: !!e.target.checked,
-                                }));
-                              }}
-                            />
-                            <span className="truncate text-xs text-blue-900/80">
-                              {col.label}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="h-9 w-9 text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50"
+            {mode !== "sql" && (
+              <>
+                <div className="flex flex-col gap-1 items-start">
+                  <span className="text-[10px] font-bold text-blue-900/60 uppercase tracking-wider px-1">
+                    Data
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Popover open={isColVisOpen} onOpenChange={setIsColVisOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={isColVisOpen ? "secondary" : "ghost"}
+                          size="icon-sm"
+                          className={cn(
+                            "h-9 w-9 transition-colors",
+                            isColVisOpen
+                              ? "text-blue-700 bg-white border border-blue-200 shadow-sm"
+                              : "text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50",
+                          )}
+                        >
+                          <BarChart3
+                            className={cn(
+                              "h-5 w-5 rotate-90",
+                              isColVisOpen ? "stroke-[2.5px]" : "stroke-[2px]",
+                            )}
+                          />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="start"
+                        className="w-[200px] p-2 border-blue-100"
                       >
-                        <RotateCcw className="h-5 w-5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Refresh</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            </div>
+                        <div className="space-y-2">
+                          <h4 className="font-medium text-xs text-blue-900 px-1 mb-2">
+                            Toggle Columns
+                          </h4>
+                          <div className="grid gap-1.5 max-h-[300px] overflow-y-auto">
+                            {columns.map((col) => (
+                              <label
+                                key={String(col.key)}
+                                className="flex items-center space-x-2 text-sm px-1 py-0.5 hover:bg-blue-50 rounded cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-blue-300 text-blue-600 focus:ring-blue-400 h-3.5 w-3.5"
+                                  checked={
+                                    columnVisibility[String(col.key)] !== false
+                                  }
+                                  onChange={(e) => {
+                                    setColumnVisibility((prev) => ({
+                                      ...prev,
+                                      [String(col.key)]: !!e.target.checked,
+                                    }));
+                                  }}
+                                />
+                                <span className="truncate text-xs text-blue-900/80">
+                                  {col.label}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="h-9 w-9 text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50"
+                          >
+                            <RotateCcw className="h-5 w-5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Refresh</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* RIGHT: Global Context */}
@@ -715,6 +746,10 @@ export default function Home() {
                 columnVisibility={columnVisibility}
                 onColumnVisibilityChange={setColumnVisibility}
               />
+            </div>
+          ) : mode === "sql" ? (
+            <div className="h-full rounded-lg border bg-card shadow-sm flex flex-col overflow-hidden">
+              <SqlEditor className="h-full border-0 shadow-none" />
             </div>
           ) : (
             <div className="flex h-full items-center justify-center rounded-lg border border-dashed text-muted-foreground bg-white m-4">
