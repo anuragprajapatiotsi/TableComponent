@@ -11,6 +11,17 @@ import {
   Search,
   GripVertical,
   GripHorizontal,
+  Folder,
+  FolderOpen,
+  LayoutTemplate,
+  Scroll,
+  Hash,
+  Tag,
+  Braces,
+  Sigma,
+  Eye,
+  FileText,
+  HardDrive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdvancedDataTable } from "@/components/ui/advanced-data-table";
@@ -22,102 +33,456 @@ import {
 } from "./ui/resizable";
 
 // Types
-type SchemaMap = Record<string, string[]>;
+type NodeType =
+  | "root"
+  | "connection"
+  | "database"
+  | "folder" // Generic folder like "Schemas"
+  | "schema"
+  | "category"
+  | "table"
+  | "view"
+  | "materialized-view"
+  | "function"
+  | "sequence"
+  | "index"
+  | "type"
+  | "aggregate";
+
+interface TreeNode {
+  id: string;
+  label: string;
+  type: NodeType;
+  parentId?: string;
+  children: string[];
+  isExpanded: boolean;
+  isLoading: boolean;
+  isLoaded: boolean;
+  hasError?: boolean;
+  metadata?: {
+    rowCount?: number;
+    returnType?: string;
+    table?: string;
+    apiPath?: string;
+    childType?: NodeType;
+    schemaName?: string;
+  };
+}
 
 interface SqlEditorProps {
   className?: string;
 }
 
+interface CategoryDef {
+  id: string;
+  label: string;
+  apiPath: string;
+  childType: NodeType;
+}
+
+const SCHEMA_CATEGORIES: CategoryDef[] = [
+  { id: "tables", label: "Tables", apiPath: "tables", childType: "table" },
+  {
+    id: "foreign-tables",
+    label: "Foreign Tables",
+    apiPath: "foreign-tables",
+    childType: "table",
+  },
+  { id: "views", label: "Views", apiPath: "views", childType: "view" },
+  {
+    id: "materialized-views",
+    label: "Materialized Views",
+    apiPath: "materialized-views",
+    childType: "materialized-view",
+  },
+  { id: "indexes", label: "Indexes", apiPath: "indexes", childType: "index" },
+  {
+    id: "functions",
+    label: "Functions",
+    apiPath: "functions",
+    childType: "function",
+  },
+  {
+    id: "sequences",
+    label: "Sequences",
+    apiPath: "sequences",
+    childType: "sequence",
+  },
+  {
+    id: "data-types",
+    label: "Data Types",
+    apiPath: "data-types",
+    childType: "type",
+  },
+  {
+    id: "aggregate-functions",
+    label: "Aggregate Functions",
+    apiPath: "aggregate-functions",
+    childType: "aggregate",
+  },
+];
+
 // --- Schema Explorer Component ---
 
 const SchemaExplorer = () => {
-  const [schemas, setSchemas] = React.useState<SchemaMap>({});
-  const [loading, setLoading] = React.useState(true);
-  const [expandedSchemas, setExpandedSchemas] = React.useState<
-    Record<string, boolean>
-  >({});
+  const [nodes, setNodes] = React.useState<Record<string, TreeNode>>({
+    root: {
+      id: "root",
+      label: "PostgreSQL",
+      type: "connection",
+      children: ["db:ipl"],
+      isExpanded: true, // Auto-expand root
+      isLoading: false,
+      isLoaded: true,
+    },
+    "db:ipl": {
+      id: "db:ipl",
+      label: "ipl_data",
+      type: "database",
+      parentId: "root",
+      children: ["folder:schemas"],
+      isExpanded: true, // Auto-expand DB
+      isLoading: false,
+      isLoaded: true,
+    },
+    "folder:schemas": {
+      id: "folder:schemas",
+      label: "Schemas",
+      type: "folder",
+      parentId: "db:ipl",
+      children: [],
+      isExpanded: false,
+      isLoading: false,
+      isLoaded: false,
+    },
+  });
+  const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(
+    null,
+  );
 
-  React.useEffect(() => {
-    const fetchSchemas = async () => {
+  const toggleNode = async (nodeId: string) => {
+    // Selection Logic: Always select on click
+    setSelectedNodeId(nodeId);
+
+    setNodes((prev) => {
+      const node = prev[nodeId];
+      if (!node) return prev;
+
+      // Toggle expansion
+      const nextExpanded = !node.isExpanded;
+      return {
+        ...prev,
+        [nodeId]: { ...node, isExpanded: nextExpanded },
+      };
+    });
+
+    const node = nodes[nodeId];
+    // If we are collapsing, or if it's already loaded/loading, do nothing more (except selection above)
+    if (node.isExpanded || node.isLoaded || node.isLoading) return;
+
+    // --- Lazy Loading Logic ---
+
+    // 1. Expand "Schemas" folder -> Fetch /metadata/schemas
+    if (node.id === "folder:schemas") {
+      setNodes((prev) => ({
+        ...prev,
+        [nodeId]: { ...prev[nodeId], isLoading: true },
+      }));
       try {
-        const response = await fetch("http://localhost:8000/schemas");
+        const response = await fetch("http://localhost:8000/metadata/schemas"); // Updated endpoint
         if (response.ok) {
           const data = await response.json();
-          setSchemas(data);
-          // Auto-expand the first schema
-          if (Object.keys(data).length > 0) {
-            setExpandedSchemas({ [Object.keys(data)[0]]: true });
-          }
+          const childIds: string[] = [];
+          const newNodes: Record<string, TreeNode> = {};
+
+          // Data is array of strings e.g. ["public", "information_schema"]
+          data.forEach((schemaName: string) => {
+            const id = `schema:${schemaName}`;
+            childIds.push(id);
+            newNodes[id] = {
+              id,
+              label: schemaName,
+              type: "schema",
+              parentId: nodeId,
+              children: [],
+              isExpanded: false,
+              isLoading: false,
+              isLoaded: false, // Virtual children not made yet
+            };
+          });
+
+          setNodes((prev) => ({
+            ...prev,
+            ...newNodes,
+            [nodeId]: {
+              ...prev[nodeId],
+              isLoaded: true,
+              isLoading: false,
+              children: childIds,
+            },
+          }));
+        } else {
+          throw new Error("Failed to fetch schemas");
         }
       } catch (error) {
-        console.error("Failed to fetch schemas:", error);
-      } finally {
-        setLoading(false);
+        console.error(error);
+        setNodes((prev) => ({
+          ...prev,
+          [nodeId]: { ...prev[nodeId], isLoading: false, hasError: true },
+        }));
       }
-    };
-    fetchSchemas();
-  }, []);
+    }
 
-  const toggleSchema = (schema: string) => {
-    setExpandedSchemas((prev) => ({
-      ...prev,
-      [schema]: !prev[schema],
-    }));
+    // 2. Expand a Schema Node -> Generate Virtual Categories
+    else if (node.type === "schema") {
+      const childIds: string[] = [];
+      const newNodes: Record<string, TreeNode> = {};
+
+      SCHEMA_CATEGORIES.forEach((cat) => {
+        const id = `cat:${node.label}:${cat.id}`;
+        childIds.push(id);
+        newNodes[id] = {
+          id,
+          label: cat.label,
+          type: "category",
+          parentId: nodeId,
+          children: [],
+          isExpanded: false,
+          isLoading: false,
+          isLoaded: false,
+          metadata: {
+            apiPath: cat.apiPath,
+            childType: cat.childType,
+            schemaName: node.label, // Explicitly save schema name
+          },
+        };
+      });
+
+      setNodes((prev) => ({
+        ...prev,
+        ...newNodes,
+        [nodeId]: { ...prev[nodeId], isLoaded: true, children: childIds },
+      }));
+    }
+
+    // 3. Expand a Category -> Fetch Items
+    else if (node.type === "category") {
+      setNodes((prev) => ({
+        ...prev,
+        [nodeId]: { ...prev[nodeId], isLoading: true },
+      }));
+
+      try {
+        // Robust extraction: Read explicitly from metadata
+        let schemaName = node.metadata?.schemaName;
+
+        // Fallback: Parsing current node ID (cat:schema:apiPath)
+        if (!schemaName && node.id.startsWith("cat:")) {
+          const parts = node.id.split(":");
+          if (parts.length >= 2) {
+            schemaName = parts[1];
+          }
+        }
+
+        // Final safe check
+        if (!schemaName || schemaName === "undefined") {
+          // Last resort try parent
+          schemaName = nodes[node.parentId!]?.label;
+        }
+
+        if (!schemaName) {
+          throw new Error("Could not determine schema name for category node");
+        }
+
+        const apiPath = node.metadata?.apiPath;
+        const childType = (node.metadata?.childType as NodeType) || "table";
+
+        console.log(`Fetching ${apiPath} for schema: ${schemaName}`); // Debug log
+
+        const response = await fetch(
+          `http://localhost:8000/metadata/schemas/${schemaName}/${apiPath}`,
+        );
+        const data = response.ok ? await response.json() : [];
+
+        const childIds: string[] = [];
+        const newNodes: Record<string, TreeNode> = {};
+
+        data.forEach((item: any) => {
+          const itemName = typeof item === "string" ? item : item.name;
+          const id = `item:${schemaName}:${apiPath}:${itemName}`;
+          childIds.push(id);
+          newNodes[id] = {
+            id,
+            label: itemName,
+            type: childType,
+            parentId: nodeId,
+            children: [],
+            isExpanded: false,
+            isLoading: false,
+            isLoaded: true,
+            metadata: typeof item === "object" ? item : undefined,
+          };
+        });
+
+        setNodes((prev) => ({
+          ...prev,
+          ...newNodes,
+          [nodeId]: {
+            ...prev[nodeId],
+            isLoading: false,
+            isLoaded: true,
+            children: childIds,
+          },
+        }));
+      } catch (error) {
+        console.error(error);
+        setNodes((prev) => ({
+          ...prev,
+          [nodeId]: {
+            ...prev[nodeId],
+            isLoading: false,
+            hasError: true,
+          },
+        }));
+      }
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-        Loading schemas...
-      </div>
-    );
-  }
+  const getNodeIcon = (node: TreeNode) => {
+    switch (node.type) {
+      case "connection":
+        return HardDrive;
+      case "database":
+        return Database;
+      case "folder":
+      case "schema":
+        return Folder;
+      case "category":
+        return node.isExpanded ? FolderOpen : Folder;
+      case "table":
+        return TableIcon;
+      case "view":
+        return Eye;
+      case "function":
+        return Scroll;
+      case "sequence":
+        return Hash;
+      case "index":
+        return Tag;
+      case "type":
+        return FileText;
+      case "aggregate":
+        return Sigma;
+      default:
+        return ChevronRight;
+    }
+  };
+
+  const renderTree = (nodeIds: string[], level = 0) => {
+    return nodeIds.map((id) => {
+      const node = nodes[id];
+      if (!node) return null;
+
+      const Icon = getNodeIcon(node);
+      const isLeaf =
+        node.type !== "connection" &&
+        node.type !== "database" &&
+        node.type !== "folder" &&
+        node.type !== "schema" &&
+        node.type !== "category";
+
+      const showExpand = !isLeaf;
+      const isSelected = selectedNodeId === id;
+
+      return (
+        <div key={id}>
+          <div
+            className={cn(
+              "flex items-center text-sm py-0.5 pr-2 hover:bg-blue-50 cursor-pointer select-none transition-colors border-l-[2px] border-transparent",
+              isSelected && "bg-blue-100 border-blue-600",
+              node.hasError && "text-red-600",
+            )}
+            style={{ paddingLeft: `${level * 16 + 4}px` }}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleNode(id);
+            }}
+          >
+            {showExpand ? (
+              <span className="mr-1 text-muted-foreground/60 shrink-0 hover:text-foreground">
+                {node.isLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : node.isExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+              </span>
+            ) : (
+              <span className="w-[18px]" />
+            )}
+
+            <Icon
+              className={cn(
+                "h-4 w-4 mr-2 shrink-0",
+                node.type === "connection" && "text-slate-700",
+                node.type === "database" && "text-blue-600",
+                node.type === "schema" && "text-orange-600",
+                node.type === "folder" && "text-yellow-600 fill-yellow-50",
+                node.type === "category" && "text-yellow-600 fill-yellow-50",
+                node.type === "table" && "text-blue-600",
+                node.type === "view" && "text-green-600 text-opacity-80",
+                node.type === "function" && "text-purple-600",
+              )}
+            />
+            <span
+              className={cn(
+                "truncate flex-1 font-normal",
+                isSelected ? "text-blue-900" : "text-slate-700",
+              )}
+            >
+              {node.label}
+            </span>
+            {node.metadata?.rowCount !== undefined && (
+              <span className="text-[10px] text-muted-foreground ml-2 bg-slate-100 px-1 rounded">
+                {node.metadata.rowCount.toLocaleString()}
+              </span>
+            )}
+            {node.hasError && (
+              <span className="text-[10px] text-red-500 ml-2">(Error)</span>
+            )}
+          </div>
+          {node.isExpanded && (
+            <div>
+              {node.children.length > 0 ? (
+                renderTree(node.children, level + 1)
+              ) : node.isLoaded && node.type === "category" ? (
+                <div
+                  className="text-[11px] text-muted-foreground/50 italic py-0.5"
+                  style={{ paddingLeft: `${(level + 1) * 16 + 24}px` }}
+                >
+                  No items
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
+  // Removed general loading check, as we only load schemas when expanded.
+  // Initial root nodes are static.
 
   return (
-    <div className="flex flex-col h-full bg-muted/10">
-      <div className="p-3 border-b bg-white shrink-0">
-        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+    <div className="flex flex-col h-full bg-white text-slate-900">
+      <div className="p-2 border-b bg-slate-50 shrink-0 flex items-center justify-between">
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
           <Database className="h-3.5 w-3.5" />
           Explorer
         </h3>
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
-        {Object.entries(schemas).map(([schema, tables]) => (
-          <div key={schema} className="mb-2">
-            <button
-              onClick={() => toggleSchema(schema)}
-              className="flex items-center w-full text-sm font-medium text-foreground hover:bg-muted/50 p-1.5 rounded-md transition-colors"
-            >
-              {expandedSchemas[schema] ? (
-                <ChevronDown className="h-4 w-4 mr-1 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="h-4 w-4 mr-1 text-muted-foreground" />
-              )}
-              <Database className="h-3.5 w-3.5 mr-2 text-blue-600" />
-              {schema}
-              <span className="ml-auto text-xs text-muted-foreground">
-                {tables.length}
-              </span>
-            </button>
-
-            {expandedSchemas[schema] && (
-              <div className="ml-4 mt-1 space-y-0.5 pl-2 border-l border-muted/50">
-                {tables.map((table) => (
-                  <div
-                    key={table}
-                    className="flex items-center text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 p-1.5 rounded-md cursor-pointer group"
-                    title={table}
-                  >
-                    <TableIcon className="h-3.5 w-3.5 mr-2 text-blue-400 group-hover:text-blue-600" />
-                    <span className="truncate">{table}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+      <div className="flex-1 overflow-y-auto py-2">{renderTree(["root"])}</div>
     </div>
   );
 };
@@ -138,28 +503,61 @@ const SqlWorkspace = () => {
 
   const editorRef = React.useRef<any>(null);
 
-  const handleEditorDidMount: OnMount = (editor, monaco) => {
-    editorRef.current = editor;
-
-    // Add Ctrl+Enter shortcut
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-      handleRunQuery(editor.getValue());
-    });
-  };
-
-  const handleRunQuery = async (queryText?: string) => {
-    // If specific text is passed (e.g. from Ctrl+Enter inside effect), use it on priority
-    // Otherwise check selection, then full value
+  const handleRunQuery = React.useCallback(async (queryText?: string) => {
     let textToRun = queryText;
 
-    if (!textToRun && editorRef.current) {
-      const selection = editorRef.current.getSelection();
-      const model = editorRef.current.getModel();
+    // Smart Execution Logic:
+    // 1. Explicit argument (rare)
+    // 2. Selected Text (High priority)
+    // 3. Current Statement at Cursor (Standard IDE behavior)
+    // 4. Full Content (Fallback)
 
+    if (!textToRun && editorRef.current) {
+      const editor = editorRef.current;
+      const model = editor.getModel();
+      const selection = editor.getSelection();
+
+      // Case 2: Run Selection
       if (selection && !selection.isEmpty()) {
         textToRun = model.getValueInRange(selection);
-      } else {
-        textToRun = editorRef.current.getValue();
+      }
+      // Case 3: Run Current Statement (Smart Detection)
+      else {
+        const position = editor.getPosition();
+        const fullText = model.getValue();
+        const offset = model.getOffsetAt(position);
+
+        const textBefore = fullText.substring(0, offset);
+        const textAfter = fullText.substring(offset);
+
+        // Split by semicolon
+        const statementsBefore = textBefore.split(";");
+        const statementsAfter = textAfter.split(";");
+
+        // The exact chunk "before" the cursor is the last element of the split
+        const atomBefore = statementsBefore[statementsBefore.length - 1];
+        const atomAfter = statementsAfter[0];
+
+        // Heuristic:
+        // If 'atomBefore' is empty/whitespace, we are at a boundary (e.g. after ';').
+        // - If on the SAME LINE (no newline), run PREVIOUS statement.
+        // - If on a NEW LINE, run CURRENT/NEXT statement.
+
+        const isBlank = !atomBefore.trim();
+        const hasNewline = atomBefore.includes("\n");
+        const hasPrevious = statementsBefore.length > 1;
+
+        if (isBlank && !hasNewline && hasPrevious) {
+          // Case: "SELECT * FROM t;|" or "SELECT * FROM t;  |"
+          // Run Previous
+          const prevStmt = statementsBefore[statementsBefore.length - 2];
+          textToRun = prevStmt;
+        } else {
+          // Case: "SELECT | FROM t" (In query)
+          // Case: "SELECT * FROM t;\n|" (New line -> likely starting new query)
+          // Run Combined
+          textToRun = atomBefore + atomAfter;
+        }
       }
     }
 
@@ -167,7 +565,7 @@ const SqlWorkspace = () => {
     if (!textToRun || !textToRun.trim()) return;
 
     // Update state to match running query (optional, keeps UI in sync)
-    setQuery(editorRef.current?.getValue() || "");
+    // setQuery(editorRef.current?.getValue() || ""); // Don't overwrite editor content with partial query
 
     setLoading(true);
     setError(null);
@@ -197,7 +595,24 @@ const SqlWorkspace = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const handleEditorDidMount: OnMount = React.useCallback(
+    (editor, monaco) => {
+      editorRef.current = editor;
+
+      // Add Ctrl+Enter shortcut using addAction (more robust)
+      editor.addAction({
+        id: "run-query",
+        label: "Run Query",
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+        run: () => {
+          handleRunQuery(); // Use the stable callback
+        },
+      });
+    },
+    [handleRunQuery],
+  );
 
   return (
     <ResizablePanelGroup
@@ -327,14 +742,16 @@ export default function SqlEditor({ className }: SqlEditorProps) {
         {/* Left Panel: Schema Explorer */}
         <ResizablePanel
           defaultSize={20}
-          minSize={15}
           id="sql-schema-panel"
           className="flex flex-col border-r"
         >
           <SchemaExplorer />
         </ResizablePanel>
 
-        <ResizableHandle withHandle />
+        <ResizableHandle className="flex w-4 items-center justify-center bg-transparent hover:bg-blue-50 transition-colors cursor-col-resize outline-none group focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 z-50 -ml-2">
+          {/* Vertical Line Indicator */}
+          <div className="h-full w-[1px] bg-border group-hover:bg-blue-400 transition-colors" />
+        </ResizableHandle>
 
         {/* Right Panel: SQL Workspace */}
         <ResizablePanel

@@ -503,6 +503,7 @@ export default function Home() {
                             onClick={handleApplyFilters}
                             className="bg-blue-600 hover:bg-blue-700 w-24 text-white shadow-sm"
                           >
+                            <Filter className="h-3.5 w-3.5 mr-2" />
                             Apply
                           </Button>
                         </div>
@@ -617,7 +618,7 @@ export default function Home() {
 
           {/* RIGHT: Global Context */}
           <div className="flex items-center gap-4">
-            {/* AI Chat */}
+            {/* AI Chat - Always Visible */}
             <Button
               variant={isAIChatOpen ? "secondary" : "ghost"}
               size="icon"
@@ -637,59 +638,69 @@ export default function Home() {
               />
             </Button>
 
-            <div className="flex items-center gap-2 bg-blue-100/30 px-3 py-1.5 rounded-md border border-blue-200/50">
-              <span className="text-xs text-blue-900/60 font-bold uppercase tracking-wider">
-                Dataset:
-              </span>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 gap-2 font-normal text-blue-900 p-0 hover:bg-transparent"
-                  >
-                    <span className="truncate max-w-[120px] font-semibold">
-                      {dataset}
-                    </span>
-                    <ChevronDown className="h-3 w-3 opacity-50" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="w-[200px] border-blue-100"
-                >
-                  {datasets.map((d) => (
-                    <DropdownMenuCheckboxItem
-                      key={d}
-                      checked={dataset === d}
-                      onCheckedChange={() => setDataset(d)}
-                      className="text-blue-900 focus:bg-blue-50 focus:text-blue-900"
+            {mode !== "sql" && (
+              <div className="flex items-center gap-2 bg-blue-100/30 px-3 py-1.5 rounded-md border border-blue-200/50">
+                <span className="text-xs text-blue-900/60 font-bold uppercase tracking-wider">
+                  Dataset:
+                </span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 gap-2 font-normal text-blue-900 p-0 hover:bg-transparent"
                     >
-                      {d}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+                      <span className="truncate max-w-[120px] font-semibold">
+                        {dataset}
+                      </span>
+                      <ChevronDown className="h-3 w-3 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-[200px] border-blue-100"
+                  >
+                    {datasets.map((d) => (
+                      <DropdownMenuCheckboxItem
+                        key={d}
+                        checked={dataset === d}
+                        onCheckedChange={() => setDataset(d)}
+                        className="text-blue-900 focus:bg-blue-50 focus:text-blue-900"
+                      >
+                        {d}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Filter Bar (Persistent) */}
-      {dataset && columnFilters.length > 0 && (
+      {mode !== "sql" && dataset && columnFilters.length > 0 && (
         <div className="bg-blue-50/50 backdrop-blur-sm border-b border-blue-100 px-4 py-2 flex items-center gap-2 min-h-[44px] overflow-x-auto shrink-0">
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsFilterPopoverOpen(true)}
+              className="h-8 w-8 p-0 text-blue-600 bg-white border border-blue-200 shadow-sm hover:bg-blue-50 hover:text-blue-700 rounded-md transition-all active:scale-95"
+            >
+              <Filter className="h-4.5 w-4.5" />
+            </Button>
             {columnFilters.map((filter) => {
               const col = columns.find((c) => c.key === filter.id);
               const val = filter.value as any;
               return (
                 <div
                   key={filter.id}
-                  className="flex items-center bg-white border border-blue-200 rounded-md shadow-sm h-7 group"
+                  className="flex items-center bg-white border border-blue-200 rounded-md shadow-sm h-8 group transition-all hover:border-blue-300"
                 >
                   <button
                     onClick={() => setIsFilterPopoverOpen(true)}
-                    className="flex items-center px-2.5 h-full text-xs hover:bg-blue-50 transition-colors border-r border-blue-100 rounded-l-md"
+                    className="flex items-center px-3 h-full text-xs hover:bg-blue-50 transition-colors border-r border-blue-100 rounded-l-md"
                   >
                     <span className="font-semibold text-blue-700 mr-1.5">
                       {col?.label}
@@ -697,7 +708,7 @@ export default function Home() {
                     <span className="text-blue-600/70 mr-1.5">
                       ({getOperatorLabel(filter.id, val.operator)})
                     </span>
-                    <span className="font-medium text-blue-900">
+                    <span className="font-medium text-blue-900 bg-blue-50 px-1.5 py-0.5 rounded-sm">
                       {val.value}
                     </span>
                   </button>
@@ -707,7 +718,7 @@ export default function Home() {
                         prev.filter((f) => f.id !== filter.id),
                       )
                     }
-                    className="h-full px-1.5 hover:bg-red-50 hover:text-red-500 transition-colors rounded-r-md text-blue-300"
+                    className="h-full px-2 hover:bg-red-50 hover:text-red-500 transition-colors rounded-r-md text-blue-300 flex items-center justify-center"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -717,7 +728,7 @@ export default function Home() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs text-blue-600/70 hover:text-red-600 hover:bg-red-50"
+              className="h-8 text-xs font-medium text-blue-600/70 hover:text-red-600 hover:bg-red-50 px-3"
               onClick={() => {
                 setColumnFilters([]);
                 setPendingFilters([]);
