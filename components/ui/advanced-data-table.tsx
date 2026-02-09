@@ -87,6 +87,14 @@ interface AdvancedDataTableProps<TData> {
   // UI toggles
   hideHeaderFilters?: boolean;
   hideFilterSummary?: boolean;
+  // Block Pagination Props
+  onNextBlock?: () => void;
+  onPreviousBlock?: () => void;
+  hasMoreBlocks?: boolean;
+  hasPreviousBlocks?: boolean;
+  serverTotalRows?: number;
+  isLoadingPage?: boolean;
+  offset?: number;
   // Column Visibility
   columnVisibility?: VisibilityState;
   onColumnVisibilityChange?: OnChangeFn<VisibilityState>;
@@ -449,6 +457,14 @@ export function AdvancedDataTable<TData>({
   onColumnsLoaded,
   hideHeaderFilters = false,
   hideFilterSummary = false,
+  // Block pagination defaults
+  onNextBlock,
+  onPreviousBlock,
+  hasMoreBlocks = false,
+  hasPreviousBlocks = false,
+  serverTotalRows,
+  isLoadingPage = false,
+  offset = 0,
   columnVisibility: controlledColumnVisibility,
   onColumnVisibilityChange: setControlledColumnVisibility,
 }: AdvancedDataTableProps<TData>) {
@@ -484,6 +500,20 @@ export function AdvancedDataTable<TData>({
     pageIndex: 0,
     pageSize: defaultPageSize,
   });
+
+  // State to handle scrolling to last page when loading previous block
+  const [shouldScrollToLastPage, setShouldScrollToLastPage] =
+    React.useState(false);
+
+  React.useEffect(() => {
+    if (shouldScrollToLastPage && !isLoadingPage && data.length > 0) {
+      const lastPage = Math.ceil(data.length / pagination.pageSize) - 1;
+      if (lastPage >= 0) {
+        setPagination((prev) => ({ ...prev, pageIndex: lastPage }));
+      }
+      setShouldScrollToLastPage(false);
+    }
+  }, [data, isLoadingPage, shouldScrollToLastPage, pagination.pageSize]);
 
   const fetchData = React.useCallback(async () => {
     if (!endpoint) return;
@@ -615,6 +645,19 @@ export function AdvancedDataTable<TData>({
     }
   }, [columns, onColumnsLoaded]);
 
+  // Sync state with props (fix for external data updates)
+  React.useEffect(() => {
+    if (initialData) {
+      setData(initialData);
+    }
+  }, [initialData]);
+
+  React.useEffect(() => {
+    if (initialColumns) {
+      setColumns(initialColumns);
+    }
+  }, [initialColumns]);
+
   // Initial Fetch & Refetch on state change
   React.useEffect(() => {
     if (endpoint) {
@@ -635,7 +678,7 @@ export function AdvancedDataTable<TData>({
         <div className="text-center font-medium text-muted-foreground">
           {endpoint
             ? pagination.pageIndex * pagination.pageSize + row.index + 1
-            : row.index + 1}
+            : offset + row.index + 1}
         </div>
       ),
       enableSorting: false,
@@ -727,7 +770,7 @@ export function AdvancedDataTable<TData>({
     }));
 
     return [indexCol, ...dataCols];
-  }, [columns, endpoint, pagination.pageIndex, pagination.pageSize]);
+  }, [columns, endpoint, pagination.pageIndex, pagination.pageSize, offset]);
 
   const table = useReactTable({
     data,
@@ -751,6 +794,7 @@ export function AdvancedDataTable<TData>({
     onColumnVisibilityChange: setColumnVisibility,
     onColumnFiltersChange: setColumnFilters,
     onPaginationChange: setPagination,
+    autoResetPageIndex: false,
     state: {
       sorting,
       columnVisibility,
@@ -791,22 +835,57 @@ export function AdvancedDataTable<TData>({
 
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-xs">
-            Page {table.getState().pagination.pageIndex + 1} of{" "}
-            {table.getPageCount()}
+            Page{" "}
+            {Math.floor(offset / table.getState().pagination.pageSize) +
+              table.getState().pagination.pageIndex +
+              1}{" "}
+            of{" "}
+            {Math.ceil(
+              (serverTotalRows ??
+                (endpoint
+                  ? totalRows
+                  : table.getFilteredRowModel().rows.length)) /
+                table.getState().pagination.pageSize,
+            ) || 1}
             <span className="text-muted-foreground/50 mx-1">|</span>
             Go to:
             <input
               type="number"
               min={1}
-              max={table.getPageCount()}
-              defaultValue={table.getState().pagination.pageIndex + 1}
+              max={
+                Math.ceil(
+                  (serverTotalRows ??
+                    (endpoint
+                      ? totalRows
+                      : table.getFilteredRowModel().rows.length)) /
+                    table.getState().pagination.pageSize,
+                ) || 1
+              }
+              value={
+                Math.floor(offset / table.getState().pagination.pageSize) +
+                table.getState().pagination.pageIndex +
+                1
+              }
               onChange={(e) => {
-                const page = e.target.value ? Number(e.target.value) - 1 : 0;
-                table.setPageIndex(page);
+                const pageSize = table.getState().pagination.pageSize;
+                const newGlobalPage = e.target.value
+                  ? Number(e.target.value)
+                  : 1;
+                const globalRowStart = (newGlobalPage - 1) * pageSize;
+
+                if (
+                  globalRowStart >= offset &&
+                  globalRowStart < offset + data.length
+                ) {
+                  const newLocalPageIndex =
+                    newGlobalPage - 1 - Math.floor(offset / pageSize);
+                  table.setPageIndex(newLocalPageIndex);
+                }
               }}
               className="h-6 w-12 rounded border border-input bg-transparent px-1 text-xs text-center"
             />
           </div>
+
           <div className="flex items-center space-x-2">
             <Button
               variant="outline"
@@ -821,8 +900,15 @@ export function AdvancedDataTable<TData>({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
+              onClick={() => {
+                if (!table.getCanPreviousPage() && hasPreviousBlocks) {
+                  setShouldScrollToLastPage(true);
+                  onPreviousBlock?.();
+                } else {
+                  table.previousPage();
+                }
+              }}
+              disabled={!table.getCanPreviousPage() && !hasPreviousBlocks}
               className="h-8 w-8 p-0"
             >
               <span className="sr-only">Go to previous page</span>
@@ -831,8 +917,15 @@ export function AdvancedDataTable<TData>({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
+              onClick={() => {
+                if (!table.getCanNextPage() && hasMoreBlocks) {
+                  onNextBlock?.();
+                  table.setPageIndex(0);
+                } else {
+                  table.nextPage();
+                }
+              }}
+              disabled={!table.getCanNextPage() && !hasMoreBlocks}
               className="h-8 w-8 p-0"
             >
               <span className="sr-only">Go to next page</span>
@@ -853,7 +946,7 @@ export function AdvancedDataTable<TData>({
       </div>
 
       <div className="flex-1 overflow-auto rounded-md border bg-background relative">
-        {loading && (
+        {(loading || isLoadingPage) && (
           <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center backdrop-blur-[1px]">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
@@ -927,7 +1020,11 @@ export function AdvancedDataTable<TData>({
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span>
             Total{" "}
-            {endpoint ? totalRows : table.getFilteredRowModel().rows.length}{" "}
+            {serverTotalRows !== undefined
+              ? serverTotalRows
+              : endpoint
+                ? totalRows
+                : table.getFilteredRowModel().rows.length}{" "}
             rows
           </span>
           <div className="flex items-center gap-2">
@@ -950,18 +1047,52 @@ export function AdvancedDataTable<TData>({
 
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-xs">
-            Page {table.getState().pagination.pageIndex + 1} of{" "}
-            {table.getPageCount()}
+            Page{" "}
+            {Math.floor(offset / table.getState().pagination.pageSize) +
+              table.getState().pagination.pageIndex +
+              1}{" "}
+            of{" "}
+            {Math.ceil(
+              (serverTotalRows ??
+                (endpoint
+                  ? totalRows
+                  : table.getFilteredRowModel().rows.length)) /
+                table.getState().pagination.pageSize,
+            ) || 1}
             <span className="text-muted-foreground/50 mx-1">|</span>
             Go to:
             <input
               type="number"
               min={1}
-              max={table.getPageCount()}
-              defaultValue={table.getState().pagination.pageIndex + 1}
+              max={
+                Math.ceil(
+                  (serverTotalRows ??
+                    (endpoint
+                      ? totalRows
+                      : table.getFilteredRowModel().rows.length)) /
+                    table.getState().pagination.pageSize,
+                ) || 1
+              }
+              value={
+                Math.floor(offset / table.getState().pagination.pageSize) +
+                table.getState().pagination.pageIndex +
+                1
+              }
               onChange={(e) => {
-                const page = e.target.value ? Number(e.target.value) - 1 : 0;
-                table.setPageIndex(page);
+                const pageSize = table.getState().pagination.pageSize;
+                const newGlobalPage = e.target.value
+                  ? Number(e.target.value)
+                  : 1;
+                const globalRowStart = (newGlobalPage - 1) * pageSize;
+
+                if (
+                  globalRowStart >= offset &&
+                  globalRowStart < offset + data.length
+                ) {
+                  const newLocalPageIndex =
+                    newGlobalPage - 1 - Math.floor(offset / pageSize);
+                  table.setPageIndex(newLocalPageIndex);
+                }
               }}
               className="h-6 w-12 rounded border border-input bg-transparent px-1 text-xs text-center"
             />
@@ -980,8 +1111,15 @@ export function AdvancedDataTable<TData>({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
+              onClick={() => {
+                if (!table.getCanPreviousPage() && hasPreviousBlocks) {
+                  setShouldScrollToLastPage(true);
+                  onPreviousBlock?.();
+                } else {
+                  table.previousPage();
+                }
+              }}
+              disabled={!table.getCanPreviousPage() && !hasPreviousBlocks}
               className="h-8 w-8 p-0"
             >
               <span className="sr-only">Go to previous page</span>
@@ -990,8 +1128,15 @@ export function AdvancedDataTable<TData>({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
+              onClick={() => {
+                if (!table.getCanNextPage() && hasMoreBlocks) {
+                  onNextBlock?.();
+                  table.setPageIndex(0); // Reset to first page of new block
+                } else {
+                  table.nextPage();
+                }
+              }}
+              disabled={!table.getCanNextPage() && !hasMoreBlocks}
               className="h-8 w-8 p-0"
             >
               <span className="sr-only">Go to next page</span>

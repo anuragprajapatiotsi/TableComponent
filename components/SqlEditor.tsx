@@ -501,6 +501,17 @@ const SqlWorkspace = () => {
   const [error, setError] = React.useState<string | null>(null);
   const [executionTime, setExecutionTime] = React.useState<number | null>(null);
 
+  // Block Pagination State
+  const [activeQuery, setActiveQuery] = React.useState<string | null>(null);
+  const [offset, setOffset] = React.useState(0);
+  const [hasMore, setHasMore] = React.useState(false);
+  const [totalRows, setTotalRows] = React.useState<number | undefined>(
+    undefined,
+  );
+  const [loadingPage, setLoadingPage] = React.useState(false);
+
+  const BLOCK_SIZE = 500;
+
   const editorRef = React.useRef<any>(null);
 
   const handleRunQuery = React.useCallback(async (queryText?: string) => {
@@ -570,6 +581,11 @@ const SqlWorkspace = () => {
     setLoading(true);
     setError(null);
     setResults(null);
+
+    // Reset Pagination
+    setOffset(0);
+    setActiveQuery(textToRun);
+
     const startTime = performance.now();
 
     try {
@@ -578,7 +594,11 @@ const SqlWorkspace = () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ query: textToRun }),
+        body: JSON.stringify({
+          query: textToRun,
+          limit: BLOCK_SIZE,
+          offset: 0,
+        }),
       });
 
       const data = await response.json();
@@ -588,6 +608,8 @@ const SqlWorkspace = () => {
       } else {
         setResults(data.data);
         setColumns(data.columns);
+        setHasMore(data.has_more);
+        setTotalRows(data.total_rows);
         setExecutionTime(performance.now() - startTime);
       }
     } catch (err: any) {
@@ -596,6 +618,54 @@ const SqlWorkspace = () => {
       setLoading(false);
     }
   }, []);
+
+  const loadBlock = React.useCallback(
+    async (newOffset: number) => {
+      if (!activeQuery) return;
+      setLoadingPage(true);
+
+      try {
+        const response = await fetch("http://localhost:8000/query", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            query: activeQuery,
+            limit: BLOCK_SIZE,
+            offset: newOffset,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.error) {
+          setResults(data.data);
+          setOffset(newOffset);
+          setHasMore(data.has_more);
+          if (data.total_rows) setTotalRows(data.total_rows);
+        }
+      } catch (error) {
+        console.error("Failed to fetch next block", error);
+      } finally {
+        setLoadingPage(false);
+      }
+    },
+    [activeQuery],
+  );
+
+  const loadNextBlock = () => {
+    if (hasMore) {
+      loadBlock(offset + BLOCK_SIZE);
+    }
+  };
+
+  const loadPreviousBlock = () => {
+    if (offset > 0) {
+      const newOffset = Math.max(0, offset - BLOCK_SIZE);
+      loadBlock(newOffset);
+    }
+  };
 
   const handleEditorDidMount: OnMount = React.useCallback(
     (editor, monaco) => {
@@ -688,7 +758,9 @@ const SqlWorkspace = () => {
           </span>
           {executionTime !== null && !error && (
             <span className="text-xs text-muted-foreground">
-              {results?.length || 0} rows in {executionTime.toFixed(0)}ms
+              Showing rows {offset + 1}-{offset + (results?.length || 0)} of{" "}
+              {totalRows !== undefined ? totalRows : "?"} in{" "}
+              {executionTime.toFixed(0)}ms
             </span>
           )}
         </div>
@@ -713,6 +785,14 @@ const SqlWorkspace = () => {
               hideHeaderFilters={false}
               hideFilterSummary={false}
               defaultPageSize={10}
+              // Block Pagination
+              onNextBlock={loadNextBlock}
+              onPreviousBlock={loadPreviousBlock}
+              hasMoreBlocks={hasMore}
+              hasPreviousBlocks={offset > 0}
+              serverTotalRows={totalRows}
+              isLoadingPage={loadingPage}
+              offset={offset}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
