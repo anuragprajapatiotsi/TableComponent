@@ -98,6 +98,11 @@ interface AdvancedDataTableProps<TData> {
   // Column Visibility
   columnVisibility?: VisibilityState;
   onColumnVisibilityChange?: OnChangeFn<VisibilityState>;
+  // Controlled Pagination
+  pagination?: PaginationState;
+  onPaginationChange?: OnChangeFn<PaginationState>;
+  rowCount?: number;
+  manualPagination?: boolean;
 }
 
 // --- Filter Configuration ---
@@ -467,6 +472,11 @@ export function AdvancedDataTable<TData>({
   offset = 0,
   columnVisibility: controlledColumnVisibility,
   onColumnVisibilityChange: setControlledColumnVisibility,
+  // Controlled Pagination
+  pagination: controlledPagination,
+  onPaginationChange: setControlledPagination,
+  rowCount,
+  manualPagination = false,
 }: AdvancedDataTableProps<TData>) {
   // State for API mode
   const [data, setData] = React.useState<TData[]>(initialData || []);
@@ -496,10 +506,14 @@ export function AdvancedDataTable<TData>({
   const setColumnFilters =
     setControlledColumnFilters ?? setInternalColumnFilters;
 
-  const [pagination, setPagination] = React.useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: defaultPageSize,
-  });
+  const [internalPagination, setInternalPagination] =
+    React.useState<PaginationState>({
+      pageIndex: 0,
+      pageSize: defaultPageSize,
+    });
+
+  const pagination = controlledPagination ?? internalPagination;
+  const setPagination = setControlledPagination ?? setInternalPagination;
 
   // State to handle scrolling to last page when loading previous block
   const [shouldScrollToLastPage, setShouldScrollToLastPage] =
@@ -676,7 +690,7 @@ export function AdvancedDataTable<TData>({
       ),
       cell: ({ row }) => (
         <div className="text-center font-medium text-muted-foreground">
-          {endpoint
+          {endpoint || manualPagination
             ? pagination.pageIndex * pagination.pageSize + row.index + 1
             : offset + row.index + 1}
         </div>
@@ -770,15 +784,24 @@ export function AdvancedDataTable<TData>({
     }));
 
     return [indexCol, ...dataCols];
-  }, [columns, endpoint, pagination.pageIndex, pagination.pageSize, offset]);
+  }, [
+    columns,
+    endpoint,
+    pagination.pageIndex,
+    pagination.pageSize,
+    offset,
+    manualPagination,
+  ]);
 
   const table = useReactTable({
     data,
     columns: tableColumns,
     pageCount: endpoint
       ? Math.ceil(totalRows / pagination.pageSize) || 1
-      : undefined,
-    manualPagination: !!endpoint,
+      : rowCount !== undefined
+        ? Math.ceil(rowCount / pagination.pageSize)
+        : undefined,
+    manualPagination: !!endpoint || manualPagination,
     manualSorting: !!endpoint,
     manualFiltering: !!endpoint,
     defaultColumn: {

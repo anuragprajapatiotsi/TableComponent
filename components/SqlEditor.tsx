@@ -90,10 +90,11 @@ interface TabState {
   queryId: string | null; // For cancellation
   // Pagination state
   activeQuery: string | null;
-  offset: number;
-  hasMore: boolean;
+  pagination: {
+    pageIndex: number;
+    pageSize: number;
+  };
   totalRows: number | undefined;
-  loadingPage: boolean;
 }
 
 interface SqlEditorProps {
@@ -531,10 +532,11 @@ const SqlWorkspace = () => {
       executionTime: null,
       queryId: null,
       activeQuery: null,
-      offset: 0,
-      hasMore: false,
+      pagination: {
+        pageIndex: 0,
+        pageSize: 10,
+      },
       totalRows: undefined,
-      loadingPage: false,
     },
   ]);
   const [activeTabId, setActiveTabId] = React.useState<string>("1");
@@ -565,10 +567,11 @@ const SqlWorkspace = () => {
       executionTime: null,
       queryId: null,
       activeQuery: null,
-      offset: 0,
-      hasMore: false,
+      pagination: {
+        pageIndex: 0,
+        pageSize: 10,
+      },
       totalRows: undefined,
-      loadingPage: false,
     };
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newId);
@@ -589,8 +592,6 @@ const SqlWorkspace = () => {
       setActiveTabId(newTabs[newActiveIndex].id);
     }
   };
-
-  const BLOCK_SIZE = 500;
 
   const editorRef = React.useRef<any>(null);
   const monacoRef = React.useRef<any>(null);
@@ -698,7 +699,7 @@ const SqlWorkspace = () => {
         error: null,
         results: null,
         // Reset Pagination
-        offset: 0,
+        pagination: { pageIndex: 0, pageSize: 10 },
         activeQuery: textToRun,
       });
 
@@ -714,7 +715,7 @@ const SqlWorkspace = () => {
           },
           body: JSON.stringify({
             query: textToRun,
-            limit: BLOCK_SIZE,
+            limit: 10, // Default page size
             offset: 0,
             query_id: newQueryId,
           }),
@@ -728,7 +729,6 @@ const SqlWorkspace = () => {
           updateTab(currentTabId, {
             results: data.data,
             columns: data.columns,
-            hasMore: data.has_more,
             totalRows: data.total_rows,
             executionTime: performance.now() - startTime,
           });
@@ -770,12 +770,12 @@ const SqlWorkspace = () => {
     }
   };
 
-  const loadBlock = React.useCallback(
-    async (newOffset: number) => {
-      // Use closure or ref? 'activeTab' changes, so we need it in dependency
-      if (!activeTab.activeQuery) return;
+  const fetchPage = React.useCallback(
+    async (tabId: string, pageIndex: number, pageSize: number) => {
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab || !tab.activeQuery) return;
 
-      updateTab(activeTab.id, { loadingPage: true });
+      updateTab(tabId, { loading: true });
 
       try {
         const response = await fetch("http://localhost:8000/query", {
@@ -784,42 +784,42 @@ const SqlWorkspace = () => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            query: activeTab.activeQuery,
-            limit: BLOCK_SIZE,
-            offset: newOffset,
+            query: tab.activeQuery,
+            limit: pageSize,
+            offset: pageIndex * pageSize,
           }),
         });
 
         const data = await response.json();
 
         if (!data.error) {
-          updateTab(activeTab.id, {
+          updateTab(tabId, {
             results: data.data,
-            offset: newOffset,
-            hasMore: data.has_more,
-            totalRows: data.total_rows || activeTab.totalRows,
+            totalRows: data.total_rows,
+            pagination: {
+              pageIndex,
+              pageSize,
+            },
           });
         }
       } catch (error) {
-        console.error("Failed to fetch next block", error);
+        console.error("Failed to fetch page", error);
       } finally {
-        updateTab(activeTab.id, { loadingPage: false });
+        updateTab(tabId, { loading: false });
       }
     },
-    [activeTab],
+    [tabs],
   );
 
-  const loadNextBlock = () => {
-    if (activeTab.hasMore) {
-      loadBlock(activeTab.offset + BLOCK_SIZE);
-    }
-  };
+  const handlePaginationChange = (updaterOrValue: any) => {
+    // updaterOrValue can be value or function
+    const oldPagination = activeTab.pagination;
+    const newPagination =
+      typeof updaterOrValue === "function"
+        ? updaterOrValue(oldPagination)
+        : updaterOrValue;
 
-  const loadPreviousBlock = () => {
-    if (activeTab.offset > 0) {
-      const newOffset = Math.max(0, activeTab.offset - BLOCK_SIZE);
-      loadBlock(newOffset);
-    }
+    fetchPage(activeTab.id, newPagination.pageIndex, newPagination.pageSize);
   };
 
   const handleEditorDidMount: OnMount = React.useCallback(
@@ -1078,10 +1078,17 @@ const SqlWorkspace = () => {
           </span>
           {activeTab.executionTime !== null && !activeTab.error && (
             <span className="text-xs text-muted-foreground">
-              Showing rows {activeTab.offset + 1}-
-              {activeTab.offset + (activeTab.results?.length || 0)} of{" "}
-              {activeTab.totalRows !== undefined ? activeTab.totalRows : "?"} in{" "}
-              {activeTab.executionTime?.toFixed(0)}ms
+              Showing rows{" "}
+              {activeTab.pagination.pageIndex * activeTab.pagination.pageSize +
+                1}
+              -
+              {Math.min(
+                (activeTab.pagination.pageIndex + 1) *
+                  activeTab.pagination.pageSize,
+                activeTab.totalRows || 0,
+              )}{" "}
+              of {activeTab.totalRows !== undefined ? activeTab.totalRows : "?"}{" "}
+              in {activeTab.executionTime?.toFixed(0)}ms
             </span>
           )}
         </div>
@@ -1101,19 +1108,17 @@ const SqlWorkspace = () => {
             <AdvancedDataTable
               data={activeTab.results}
               columns={activeTab.columns}
-              // We pass data directly, so it's client-side mode
+              // We pass data directly, so it's technically client-side mode for the TABLE
+              // But we control pagination manually
               endpoint=""
               hideHeaderFilters={false}
               hideFilterSummary={false}
               defaultPageSize={10}
-              // Block Pagination
-              onNextBlock={loadNextBlock}
-              onPreviousBlock={loadPreviousBlock}
-              hasMoreBlocks={activeTab.hasMore}
-              hasPreviousBlocks={activeTab.offset > 0}
-              serverTotalRows={activeTab.totalRows}
-              isLoadingPage={activeTab.loadingPage}
-              offset={activeTab.offset}
+              // Controlled Pagination
+              pagination={activeTab.pagination}
+              onPaginationChange={handlePaginationChange}
+              rowCount={activeTab.totalRows}
+              manualPagination={true}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
