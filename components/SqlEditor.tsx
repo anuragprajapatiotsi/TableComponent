@@ -78,23 +78,33 @@ type MetadataCache = {
   columns: Record<string, Record<string, string[]>>; // schema -> table -> columns
 };
 
-interface TabState {
-  id: string;
-  title: string;
-  query: string;
-  results: any[] | null;
+interface QueryResult {
+  id: string; // UUID
+  timestamp: number;
+  label: string; // e.g. "Result 1"
+  query: string; // The SQL executed
+  data: any[] | null;
   columns: any[];
-  loading: boolean;
   error: string | null;
   executionTime: number | null;
-  queryId: string | null; // For cancellation
-  // Pagination state
-  activeQuery: string | null;
+  totalRows: number | undefined;
+  queryId: string | null; // Backend ID
+  loading: boolean;
+  activeQuery: string | null; // Needed for pagination re-fetch
   pagination: {
     pageIndex: number;
     pageSize: number;
   };
-  totalRows: number | undefined;
+}
+
+interface TabState {
+  id: string;
+  title: string;
+  query: string;
+
+  // Results Management
+  resultTabs: QueryResult[];
+  activeResultId: string | null;
 }
 
 interface SqlEditorProps {
@@ -525,18 +535,8 @@ const SqlWorkspace = () => {
       id: "1",
       title: "Query 1",
       query: "SELECT * FROM ipl_matches LIMIT 10;",
-      results: null,
-      columns: [],
-      loading: false,
-      error: null,
-      executionTime: null,
-      queryId: null,
-      activeQuery: null,
-      pagination: {
-        pageIndex: 0,
-        pageSize: 10,
-      },
-      totalRows: undefined,
+      resultTabs: [],
+      activeResultId: null,
     },
   ]);
   const [activeTabId, setActiveTabId] = React.useState<string>("1");
@@ -547,10 +547,32 @@ const SqlWorkspace = () => {
   }, [activeTabId]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
+  // Get active result or last result
+  const activeResult =
+    activeTab.resultTabs.find((r) => r.id === activeTab.activeResultId) ||
+    activeTab.resultTabs[0];
 
   const updateTab = (tabId: string, updates: Partial<TabState>) => {
     setTabs((prev) =>
       prev.map((tab) => (tab.id === tabId ? { ...tab, ...updates } : tab)),
+    );
+  };
+
+  const updateResult = (
+    tabId: string,
+    resultId: string,
+    updates: Partial<QueryResult>,
+  ) => {
+    setTabs((prev) =>
+      prev.map((tab) => {
+        if (tab.id !== tabId) return tab;
+        return {
+          ...tab,
+          resultTabs: tab.resultTabs.map((r) =>
+            r.id === resultId ? { ...r, ...updates } : r,
+          ),
+        };
+      }),
     );
   };
 
@@ -560,18 +582,8 @@ const SqlWorkspace = () => {
       id: newId,
       title: `Query ${tabs.length + 1}`,
       query: "",
-      results: null,
-      columns: [],
-      loading: false,
-      error: null,
-      executionTime: null,
-      queryId: null,
-      activeQuery: null,
-      pagination: {
-        pageIndex: 0,
-        pageSize: 10,
-      },
-      totalRows: undefined,
+      resultTabs: [],
+      activeResultId: null,
     };
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newId);
@@ -655,8 +667,14 @@ const SqlWorkspace = () => {
     fetchMetadata();
   }, [fetchMetadata]);
 
+  // Create a ref for tabs to avoid stale closures in handleRunQuery
+  const tabsRef = React.useRef(tabs);
+  React.useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
+
   const handleRunQuery = React.useCallback(
-    async (queryText?: string) => {
+    async (mode: "replace" | "new" = "replace", queryText?: string) => {
       let textToRun = queryText;
 
       if (!textToRun && editorRef.current) {
@@ -667,6 +685,7 @@ const SqlWorkspace = () => {
         if (selection && !selection.isEmpty()) {
           textToRun = model.getValueInRange(selection);
         } else {
+          // ... (keep existing selection logic)
           const position = editor.getPosition();
           const fullText = model.getValue();
           const offset = model.getOffsetAt(position);
@@ -691,21 +710,65 @@ const SqlWorkspace = () => {
 
       if (!textToRun || !textToRun.trim()) return;
 
-      // Use current activeTabId from closure-safe ref
       const currentTabId = activeTabIdRef.current;
+      // Use tabsRef to get the latest state safely without dependency issues
+      const currentTabs = tabsRef.current;
+      const tab = currentTabs.find((t) => t.id === currentTabId);
+      if (!tab) return; // Should not happen
 
-      updateTab(currentTabId, {
-        loading: true,
-        error: null,
-        results: null,
-        // Reset Pagination
-        pagination: { pageIndex: 0, pageSize: 10 },
-        activeQuery: textToRun,
-      });
+      let targetResultId: string;
+
+      if (mode === "new" || !tab.activeResultId) {
+        // Create new result tab
+        const newResultId = crypto.randomUUID();
+        const newResult: QueryResult = {
+          id: newResultId,
+          timestamp: Date.now(),
+          label: `Result ${tab.resultTabs.length + 1}`,
+          query: textToRun, // Store executed query
+          data: null,
+          columns: [],
+          error: null,
+          executionTime: null,
+          totalRows: undefined,
+          queryId: null,
+          loading: true,
+          activeQuery: textToRun,
+          pagination: { pageIndex: 0, pageSize: 10 },
+        };
+
+        // Add to tabs and set active
+        setTabs((prev) =>
+          prev.map((t) => {
+            if (t.id !== currentTabId) return t;
+            return {
+              ...t,
+              resultTabs: [...t.resultTabs, newResult],
+              activeResultId: newResultId,
+            };
+          }),
+        );
+        targetResultId = newResultId;
+      } else {
+        // Replace current result
+        targetResultId = tab.activeResultId;
+        updateResult(currentTabId, targetResultId, {
+          loading: true,
+          error: null,
+          data: null,
+          columns: [],
+          totalRows: undefined,
+          executionTime: null,
+          queryId: null,
+          activeQuery: textToRun,
+          pagination: { pageIndex: 0, pageSize: 10 },
+          query: textToRun, // Update query text for this result
+        });
+      }
 
       const startTime = performance.now();
       const newQueryId = crypto.randomUUID();
-      updateTab(currentTabId, { queryId: newQueryId });
+      updateResult(currentTabId, targetResultId, { queryId: newQueryId });
 
       try {
         const response = await fetch("http://localhost:8000/query", {
@@ -715,7 +778,7 @@ const SqlWorkspace = () => {
           },
           body: JSON.stringify({
             query: textToRun,
-            limit: 10, // Default page size
+            limit: 10,
             offset: 0,
             query_id: newQueryId,
           }),
@@ -724,31 +787,31 @@ const SqlWorkspace = () => {
         const data = await response.json();
 
         if (data.error) {
-          updateTab(currentTabId, { error: data.error });
+          updateResult(currentTabId, targetResultId, { error: data.error });
         } else {
-          updateTab(currentTabId, {
-            results: data.data,
+          updateResult(currentTabId, targetResultId, {
+            data: data.data,
             columns: data.columns,
             totalRows: data.total_rows,
             executionTime: performance.now() - startTime,
           });
         }
       } catch (err: any) {
-        updateTab(currentTabId, {
+        updateResult(currentTabId, targetResultId, {
           error: err.message || "Failed to execute query",
         });
       } finally {
-        updateTab(currentTabId, {
+        updateResult(currentTabId, targetResultId, {
           loading: false,
           queryId: null,
         });
       }
     },
-    [], // Dependency on activeTabId is REMOVED to keep it stable
+    [], // No dependencies needed due to Refs
   );
 
   const handleCancelQuery = async () => {
-    if (!activeTab.queryId) return;
+    if (!activeResult?.queryId) return;
 
     try {
       await fetch("http://localhost:8000/query/cancel", {
@@ -757,10 +820,10 @@ const SqlWorkspace = () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          query_id: activeTab.queryId,
+          query_id: activeResult.queryId,
         }),
       });
-      updateTab(activeTab.id, {
+      updateResult(activeTab.id, activeResult.id, {
         loading: false,
         error: "Query cancelled",
         queryId: null,
@@ -771,11 +834,18 @@ const SqlWorkspace = () => {
   };
 
   const fetchPage = React.useCallback(
-    async (tabId: string, pageIndex: number, pageSize: number) => {
+    async (
+      tabId: string,
+      resultId: string,
+      pageIndex: number,
+      pageSize: number,
+    ) => {
       const tab = tabs.find((t) => t.id === tabId);
-      if (!tab || !tab.activeQuery) return;
+      if (!tab) return;
+      const result = tab.resultTabs.find((r) => r.id === resultId);
+      if (!result || !result.activeQuery) return;
 
-      updateTab(tabId, { loading: true });
+      updateResult(tabId, resultId, { loading: true });
 
       try {
         const response = await fetch("http://localhost:8000/query", {
@@ -784,7 +854,7 @@ const SqlWorkspace = () => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            query: tab.activeQuery,
+            query: result.activeQuery,
             limit: pageSize,
             offset: pageIndex * pageSize,
           }),
@@ -793,8 +863,8 @@ const SqlWorkspace = () => {
         const data = await response.json();
 
         if (!data.error) {
-          updateTab(tabId, {
-            results: data.data,
+          updateResult(tabId, resultId, {
+            data: data.data,
             totalRows: data.total_rows,
             pagination: {
               pageIndex,
@@ -805,21 +875,26 @@ const SqlWorkspace = () => {
       } catch (error) {
         console.error("Failed to fetch page", error);
       } finally {
-        updateTab(tabId, { loading: false });
+        updateResult(tabId, resultId, { loading: false });
       }
     },
     [tabs],
   );
 
   const handlePaginationChange = (updaterOrValue: any) => {
-    // updaterOrValue can be value or function
-    const oldPagination = activeTab.pagination;
+    if (!activeResult) return;
+    const oldPagination = activeResult.pagination;
     const newPagination =
       typeof updaterOrValue === "function"
         ? updaterOrValue(oldPagination)
         : updaterOrValue;
 
-    fetchPage(activeTab.id, newPagination.pageIndex, newPagination.pageSize);
+    fetchPage(
+      activeTab.id,
+      activeResult.id,
+      newPagination.pageIndex,
+      newPagination.pageSize,
+    );
   };
 
   const handleEditorDidMount: OnMount = React.useCallback(
@@ -944,7 +1019,7 @@ const SqlWorkspace = () => {
         label: "Run Query",
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
         run: () => {
-          handleRunQuery(); // Use the stable callback
+          handleRunQuery("new"); // Default to "new" mode for Ctrl+Enter
         },
       });
     },
@@ -963,7 +1038,7 @@ const SqlWorkspace = () => {
   return (
     <ResizablePanelGroup
       direction="vertical"
-      className="h-full"
+      className="h-full overflow-hidden"
       autoSave="sql-workspace-layout"
     >
       {/* Top: Editor */}
@@ -1014,7 +1089,7 @@ const SqlWorkspace = () => {
               (Ctrl + Enter to run)
             </span>
           </div>
-          {activeTab.loading && activeTab.queryId ? (
+          {activeResult?.loading && activeResult?.queryId ? (
             <Button
               size="sm"
               onClick={handleCancelQuery}
@@ -1024,19 +1099,32 @@ const SqlWorkspace = () => {
               Stop
             </Button>
           ) : (
-            <Button
-              size="sm"
-              onClick={() => handleRunQuery()}
-              disabled={activeTab.loading}
-              className="h-7 bg-green-600 hover:bg-green-700 text-white gap-1.5"
-            >
-              {activeTab.loading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Play className="h-3.5 w-3.5 fill-current" />
-              )}
-              Run
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => handleRunQuery("replace")}
+                disabled={activeResult?.loading}
+                className="h-7 bg-green-600 hover:bg-green-700 text-white gap-1.5"
+              >
+                {activeResult?.loading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                )}
+                Run
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleRunQuery("new")}
+                disabled={activeResult?.loading}
+                className="h-7 text-xs gap-1.5"
+                title="Run in New Tab"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Run New
+              </Button>
+            </div>
           )}
         </div>
 
@@ -1063,7 +1151,12 @@ const SqlWorkspace = () => {
         </div>
       </ResizablePanel>
 
-      <ResizableHandle withHandle />
+      <ResizableHandle
+        withHandle={false}
+        className="h-2 w-full bg-slate-50 border-y border-border hover:bg-slate-200 transition-colors z-50 flex items-center justify-center cursor-row-resize group outline-none"
+      >
+        <div className="h-1 w-10 rounded-full bg-slate-300 group-hover:bg-slate-400/80" />
+      </ResizableHandle>
 
       {/* Bottom: Results */}
       <ResizablePanel
@@ -1072,61 +1165,105 @@ const SqlWorkspace = () => {
         id="sql-results-panel"
         className="flex flex-col min-h-0 bg-background"
       >
-        <div className="flex items-center justify-between p-2 border-b bg-muted/10 shrink-0">
-          <span className="text-xs font-bold text-muted-foreground uppercase">
-            Results
-          </span>
-          {activeTab.executionTime !== null && !activeTab.error && (
-            <span className="text-xs text-muted-foreground">
-              Showing rows{" "}
-              {activeTab.pagination.pageIndex * activeTab.pagination.pageSize +
-                1}
-              -
-              {Math.min(
-                (activeTab.pagination.pageIndex + 1) *
-                  activeTab.pagination.pageSize,
-                activeTab.totalRows || 0,
-              )}{" "}
-              of {activeTab.totalRows !== undefined ? activeTab.totalRows : "?"}{" "}
-              in {activeTab.executionTime?.toFixed(0)}ms
+        <div className="flex flex-col border-b bg-muted/10 shrink-0">
+          <div className="flex items-center justify-between p-2">
+            <span className="text-xs font-bold text-muted-foreground uppercase">
+              Results
             </span>
+            {activeResult?.executionTime !== null &&
+              !activeResult?.error &&
+              activeResult?.data && (
+                <span className="text-xs text-muted-foreground">
+                  Showing rows{" "}
+                  {activeResult.pagination.pageIndex *
+                    activeResult.pagination.pageSize +
+                    1}
+                  -
+                  {Math.min(
+                    (activeResult.pagination.pageIndex + 1) *
+                      activeResult.pagination.pageSize,
+                    activeResult.totalRows || 0,
+                  )}{" "}
+                  of{" "}
+                  {activeResult.totalRows !== undefined
+                    ? activeResult.totalRows
+                    : "?"}{" "}
+                  in {activeResult.executionTime?.toFixed(0)}ms
+                </span>
+              )}
+          </div>
+
+          {/* Result Tabs */}
+          {activeTab.resultTabs.length > 0 && (
+            <div className="flex items-center gap-1 px-2 pb-0 overflow-x-auto no-scrollbar">
+              {activeTab.resultTabs.map((result) => (
+                <div
+                  key={result.id}
+                  onClick={() =>
+                    updateTab(activeTab.id, { activeResultId: result.id })
+                  }
+                  className={cn(
+                    "group flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer border-t border-x rounded-t-md select-none min-w-[80px] max-w-[200px]",
+                    result.id === activeTab.activeResultId
+                      ? "bg-background text-foreground font-medium border-b-background z-10 -mb-[1px] border-b-white"
+                      : "bg-muted/50 text-muted-foreground border-transparent hover:bg-muted/80",
+                  )}
+                >
+                  <span className="truncate">{result.label}</span>
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const newTabs = activeTab.resultTabs.filter(
+                        (r) => r.id !== result.id,
+                      );
+                      let newActiveId = activeTab.activeResultId;
+                      if (activeTab.activeResultId === result.id) {
+                        newActiveId = newTabs[newTabs.length - 1]?.id || null;
+                      }
+                      updateTab(activeTab.id, {
+                        resultTabs: newTabs,
+                        activeResultId: newActiveId,
+                      });
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded-sm hover:bg-slate-300 transition-opacity"
+                  >
+                    <X className="h-3 w-3" />
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
-        <div className="flex-1 overflow-hidden relative p-2">
-          {activeTab.loading && (
-            <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="flex-1 overflow-hidden relative p-2 bg-background">
+          {!activeResult ? (
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+              <Play className="h-8 w-8 mb-2 opacity-20" />
+              <p>Run a query to see results</p>
             </div>
-          )}
-
-          {activeTab.error ? (
-            <div className="p-4 text-red-600 bg-red-50 border border-red-100 rounded-md m-2 text-sm font-mono whitespace-pre-wrap">
-              <strong>Error:</strong> {activeTab.error}
-            </div>
-          ) : activeTab.results ? (
-            <AdvancedDataTable
-              data={activeTab.results}
-              columns={activeTab.columns}
-              // We pass data directly, so it's technically client-side mode for the TABLE
-              // But we control pagination manually
-              endpoint=""
-              hideHeaderFilters={false}
-              hideFilterSummary={false}
-              defaultPageSize={10}
-              // Controlled Pagination
-              pagination={activeTab.pagination}
-              onPaginationChange={handlePaginationChange}
-              rowCount={activeTab.totalRows}
-              manualPagination={true}
-            />
           ) : (
-            <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-              <div className="text-center">
-                <Search className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                <p>Execute a query to see results</p>
-              </div>
-            </div>
+            <>
+              {activeResult.loading && (
+                <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              )}
+
+              {activeResult.error ? (
+                <div className="p-4 text-red-600 bg-red-50 border border-red-100 rounded-md m-2 text-sm font-mono whitespace-pre-wrap">
+                  <strong>Error:</strong> {activeResult.error}
+                </div>
+              ) : activeResult.data ? (
+                <AdvancedDataTable
+                  columns={activeResult.columns}
+                  data={activeResult.data}
+                  rowCount={activeResult.totalRows}
+                  pagination={activeResult.pagination}
+                  onPaginationChange={handlePaginationChange}
+                  manualPagination={true}
+                />
+              ) : null}
+            </>
           )}
         </div>
       </ResizablePanel>
@@ -1163,7 +1300,7 @@ export default function SqlEditor({ className }: SqlEditorProps) {
         <ResizablePanel
           defaultSize={80}
           id="sql-workspace-panel"
-          className="h-full"
+          className="h-full overflow-hidden"
         >
           <SqlWorkspace />
         </ResizablePanel>

@@ -195,7 +195,7 @@ export default function Home() {
   const tableParams = React.useMemo(() => ({ table: dataset }), [dataset]);
 
   return (
-    <main className="min-h-screen bg-background flex flex-col overflow-hidden">
+    <main className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Top Toolbar */}
       {/* Enterprise Unified Toolbar (Single Row with Group Headers) */}
       <div className="flex flex-col bg-white border-b shrink-0 z-20 shadow-sm relative">
