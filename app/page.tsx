@@ -338,24 +338,29 @@ export default function Home() {
                     >
                       <PopoverTrigger asChild>
                         <Button
-                          className={cn(
-                            "h-9 px-3 gap-2 transition-all font-medium border shadow-sm",
+                          variant={
                             isFilterPopoverOpen || columnFilters.length > 0
-                              ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600 shadow-blue-100"
-                              : "bg-white text-blue-700 hover:bg-blue-50 border-blue-200",
+                              ? "secondary"
+                              : "ghost"
+                          }
+                          className={cn(
+                            "h-9 px-3 gap-2 transition-all font-medium",
+                            isFilterPopoverOpen || columnFilters.length > 0
+                              ? "text-blue-700 bg-white border border-blue-200 shadow-sm"
+                              : "text-blue-700/70 hover:text-blue-800 hover:bg-blue-100/50",
                           )}
                         >
                           <Filter
                             className={cn(
                               "h-4.5 w-4.5",
                               isFilterPopoverOpen || columnFilters.length > 0
-                                ? "fill-white/20 text-white"
-                                : "text-blue-600",
+                                ? "text-blue-600"
+                                : "text-blue-600/70",
                             )}
                           />
                           <span>Filter</span>
                           {columnFilters.length > 0 && (
-                            <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">
+                            <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">
                               {columnFilters.length}
                             </span>
                           )}
