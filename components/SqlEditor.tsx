@@ -1038,7 +1038,7 @@ const SqlWorkspace = () => {
   return (
     <ResizablePanelGroup
       direction="vertical"
-      className="h-full overflow-hidden"
+      className="h-full min-h-0"
       autoSave="sql-workspace-layout"
     >
       {/* Top: Editor */}
@@ -1046,7 +1046,7 @@ const SqlWorkspace = () => {
         defaultSize={40}
         minSize={20}
         id="sql-editor-panel"
-        className="flex flex-col relative"
+        className="flex flex-col relative min-h-0"
       >
         {/* Tab Bar */}
         <div className="flex items-center bg-slate-100 border-b overflow-x-auto no-scrollbar">
@@ -1151,12 +1151,7 @@ const SqlWorkspace = () => {
         </div>
       </ResizablePanel>
 
-      <ResizableHandle
-        withHandle={false}
-        className="h-2 w-full bg-slate-50 border-y border-border hover:bg-slate-200 transition-colors z-50 flex items-center justify-center cursor-row-resize group outline-none"
-      >
-        <div className="h-1 w-10 rounded-full bg-slate-300 group-hover:bg-slate-400/80" />
-      </ResizableHandle>
+      <ResizableHandle withHandle className="bg-border" />
 
       {/* Bottom: Results */}
       <ResizablePanel
@@ -1277,7 +1272,7 @@ export default function SqlEditor({ className }: SqlEditorProps) {
   return (
     <div
       className={cn(
-        "h-full w-full border rounded-lg overflow-hidden bg-background shadow-sm",
+        "h-full w-full border rounded-lg bg-background shadow-sm flex flex-col min-w-0 overflow-visible",
         className,
       )}
     >
@@ -1286,21 +1281,21 @@ export default function SqlEditor({ className }: SqlEditorProps) {
         <ResizablePanel
           defaultSize={20}
           id="sql-schema-panel"
-          className="flex flex-col border-r"
+          className="flex flex-col border-r min-w-0"
         >
           <SchemaExplorer />
         </ResizablePanel>
 
-        <ResizableHandle className="flex w-4 items-center justify-center bg-transparent hover:bg-blue-50 transition-colors cursor-col-resize outline-none group focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 z-50 -ml-2">
-          {/* Vertical Line Indicator */}
-          <div className="h-full w-[1px] bg-border group-hover:bg-blue-400 transition-colors" />
-        </ResizableHandle>
+        <ResizableHandle
+          withHandle
+          className="bg-border hover:bg-blue-400 transition-colors"
+        />
 
         {/* Right Panel: SQL Workspace */}
         <ResizablePanel
           defaultSize={80}
           id="sql-workspace-panel"
-          className="h-full overflow-hidden"
+          className="h-full overflow-hidden min-w-0"
         >
           <SqlWorkspace />
         </ResizablePanel>

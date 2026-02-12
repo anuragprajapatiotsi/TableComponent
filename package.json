@@ -9,11 +9,17 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/modifiers": "^9.0.0",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-menubar": "^1.1.16",
     "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tanstack/react-table": "^8.21.3",
@@ -23,10 +29,9 @@
     "monaco-editor": "^0.55.1",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dialog": "^0.1.0",
     "react-dom": "19.2.3",
     "react-resizable-panels": "^4.6.0",
-    "resizable": "^2.0.0",
+    "shadcn": "^3.8.4",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {

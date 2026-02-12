@@ -60,6 +60,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useSemantic } from "@/context/SemanticContext";
+import {
+  fetchSemanticColumns,
+  SemanticColumnMapping,
+} from "@/lib/semantic-api";
 
 // --- Types ---
 
@@ -189,8 +194,31 @@ const FilterMenu = <TData,>({
     value: "",
   };
 
-  const [operator, setOperator] = React.useState(filterValue.operator);
-  const [value, setValue] = React.useState(filterValue.value);
+  const [operator, setOperator] = React.useState<string>(filterValue.operator);
+  const [value, setValue] = React.useState<string>(filterValue.value);
+
+  // Update local state when column filter value changes externally (e.g. clear all)
+  React.useEffect(() => {
+    setOperator(filterValue.operator || defaultOperator);
+    setValue(filterValue.value || "");
+  }, [filterValue.operator, filterValue.value, defaultOperator]);
+
+  // Reset state when type changes (Semantic update)
+  React.useEffect(() => {
+    // If type changes, the available operators change.
+    // We should reset to default operator of the new type.
+    setOperator(defaultOperator);
+    // Optionally clear value if it might be incompatible, or keep it if it's just text.
+    // For safety, let's keep value but ensure operator is valid.
+    // Actually, if we switch string -> date, "abc" value is invalid for date picker.
+    // Best to clear value too to avoid UI errors?
+    // User said: "Filters must regenerate".
+    // Let's clear value to be safe.
+    setValue("");
+
+    // Also update the column filter value immediately to avoid stale state?
+    // No, let user re-enter.
+  }, [type, defaultOperator]);
 
   const debouncedSetFilter = useDebouncedCallback(
     (op: string, val: string) => {
@@ -198,6 +226,7 @@ const FilterMenu = <TData,>({
         column.setFilterValue(undefined); // Clear filter if empty
         return;
       }
+      // Ensure we pass the current type so the backend knows how to handle it
       column.setFilterValue({ operator: op, value: val, type });
     },
     400, // debounce delay (ms)
@@ -498,6 +527,33 @@ export function AdvancedDataTable<TData>({
   const setColumnVisibility =
     setControlledColumnVisibility ?? setInternalColumnVisibility;
 
+  // Semantic Context
+  const { semanticUpdateVersion } = useSemantic();
+  const [semanticMappings, setSemanticMappings] = React.useState<
+    SemanticColumnMapping[]
+  >([]);
+
+  // Fetch Semantic Mappings for this table (independent of Semantic Model tab selection)
+  React.useEffect(() => {
+    // Determine table name from params or endpoint context
+    // Assuming params.table is present as per page.tsx usage
+    const tableName = params?.table as string;
+    if (!tableName) return;
+
+    async function loadMappings() {
+      try {
+        // We assume schema is 'public' for now, or we could pass it in params
+        // Ideally params should have schema too. Defaulting to public.
+        const schemaName = (params?.schema as string) || "public";
+        const mappings = await fetchSemanticColumns(schemaName, tableName);
+        setSemanticMappings(mappings);
+      } catch (error) {
+        console.error("Failed to load semantic mappings for table", error);
+      }
+    }
+    loadMappings();
+  }, [params, semanticUpdateVersion]);
+
   // Internal filter state if not controlled
   const [internalColumnFilters, setInternalColumnFilters] =
     React.useState<ColumnFiltersState>([]);
@@ -700,8 +756,35 @@ export function AdvancedDataTable<TData>({
       size: 40, // Compact width for index
     };
 
+    // Apply Semantic Overrides
+    const effectiveColumns = columns.map((col) => {
+      const mapping = semanticMappings.find((m) => m.column === col.key);
+      if (mapping && mapping.semanticType) {
+        // Map semantic type label/code to ColumnType
+        // API returns "date", "string", "number" as semanticType (lowercase label from user example)
+        // Our ColumnType = "string" | "number" | "boolean" | "date" | "datetime";
+
+        let newType: ColumnType = col.type;
+        const st = mapping.semanticType.toLowerCase();
+
+        if (st.includes("date")) newType = "date";
+        else if (st.includes("time")) newType = "datetime";
+        else if (
+          st.includes("number") ||
+          st.includes("int") ||
+          st.includes("float")
+        )
+          newType = "number";
+        else if (st.includes("bool")) newType = "boolean";
+        else newType = "string";
+
+        return { ...col, type: newType };
+      }
+      return col;
+    });
+
     // Data Columns
-    const dataCols: ColumnDef<TData>[] = columns.map((col) => ({
+    const dataCols: ColumnDef<TData>[] = effectiveColumns.map((col) => ({
       accessorKey: col.key as string,
       header: ({ column }) => (
         <HeaderWithType
@@ -791,6 +874,7 @@ export function AdvancedDataTable<TData>({
     pagination.pageSize,
     offset,
     manualPagination,
+    semanticMappings,
   ]);
 
   const table = useReactTable({
