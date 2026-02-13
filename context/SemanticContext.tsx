@@ -61,14 +61,19 @@ interface SemanticContextType {
   refreshCanvas: () => Promise<void>;
 
   // --- Actions ---
-  dropTableOnCanvas: (tableName: string, x: number, y: number) => Promise<void>;
+  dropTableOnCanvas: (
+    tableName: string,
+    schemaName: string | undefined,
+    x: number,
+    y: number,
+  ) => Promise<void>;
   // Optimistic update for drag
   updateTablePosition: (tableId: string, x: number, y: number) => void;
   removeTable: (tableId: string) => Promise<void>;
   addJoin: (
-    leftTable: string,
+    leftTableId: string,
     leftCol: string,
-    rightTable: string,
+    rightTableId: string,
     rightCol: string,
     joinType: string,
   ) => Promise<void>;
@@ -235,6 +240,9 @@ export function SemanticProvider({ children }: { children: React.ReactNode }) {
   // --- Watchers ---
   useEffect(() => {
     async function loadSchemaTables() {
+      // Clear tables immediately to prevent showing stale data from previous schema
+      setTables([]);
+
       if (!selectedSchema) return;
       try {
         const t = await fetchTables(selectedSchema);
@@ -293,16 +301,28 @@ export function SemanticProvider({ children }: { children: React.ReactNode }) {
   }, [selectedDataset]);
 
   const dropTableOnCanvas = useCallback(
-    async (tableName: string, x: number, y: number) => {
+    async (
+      tableName: string,
+      schemaName: string | undefined,
+      x: number,
+      y: number,
+    ) => {
       if (!selectedDataset) return;
       try {
         const newTable = await addTableToCanvas(selectedDataset.id, {
           table_name: tableName,
+          schema_name: schemaName,
           alias: tableName, // Default alias
           position_x: x,
           position_y: y,
         });
-        setCanvasTables((prev) => [...prev, newTable]);
+        // Ensure schema_name is present in the state even if backend response omits it
+        const tableWithSchema = {
+          ...newTable,
+          schema_name: newTable.schema_name || schemaName,
+        };
+        console.log("New table added to canvas:", tableWithSchema);
+        setCanvasTables((prev) => [...prev, tableWithSchema]);
       } catch (e) {
         console.error("Drop table failed", e);
       }
@@ -347,18 +367,18 @@ export function SemanticProvider({ children }: { children: React.ReactNode }) {
 
   const addJoin = useCallback(
     async (
-      leftTable: string,
+      leftTableId: string,
       leftCol: string,
-      rightTable: string,
+      rightTableId: string,
       rightCol: string,
       joinType: string,
     ) => {
       if (!selectedDataset) return;
       try {
         const newJoin = await createJoin(selectedDataset.id, {
-          left_table: leftTable,
+          left_dataset_table_id: leftTableId,
           left_column: leftCol,
-          right_table: rightTable,
+          right_dataset_table_id: rightTableId,
           right_column: rightCol,
           join_type: joinType,
         });

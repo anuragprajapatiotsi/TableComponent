@@ -9,9 +9,11 @@ import JoinLines from "./JoinLines";
 
 interface SemanticCanvasProps {
   onJoinRequest?: (
-    srcTable: string,
+    srcTableId: string,
+    srcTableName: string,
     srcCol: string,
-    tgtTable: string,
+    tgtTableId: string,
+    tgtTableName: string,
     tgtCol: string,
   ) => void;
 }

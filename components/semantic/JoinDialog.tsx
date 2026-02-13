@@ -22,18 +22,22 @@ import { useSemantic } from "@/context/SemanticContext";
 interface JoinDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  sourceTable: string;
+  sourceTableId: string;
+  sourceTableName: string;
   sourceColumn: string;
-  targetTable: string;
+  targetTableId: string;
+  targetTableName: string;
   targetColumn: string;
 }
 
 export default function JoinDialog({
   isOpen,
   onClose,
-  sourceTable,
+  sourceTableId,
+  sourceTableName,
   sourceColumn,
-  targetTable,
+  targetTableId,
+  targetTableName,
   targetColumn,
 }: JoinDialogProps) {
   const { addJoin } = useSemantic();
@@ -52,9 +56,9 @@ export default function JoinDialog({
     setIsSubmitting(true);
     try {
       await addJoin(
-        sourceTable,
+        sourceTableId,
         sourceColumn,
-        targetTable,
+        targetTableId,
         targetColumn,
         joinType,
       );
@@ -74,7 +78,7 @@ export default function JoinDialog({
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-2 gap-4 items-center text-sm">
-            <div className="font-semibold text-right">{sourceTable}</div>
+            <div className="font-semibold text-right">{sourceTableName}</div>
             <div className="text-muted-foreground">{sourceColumn}</div>
           </div>
 
@@ -86,7 +90,7 @@ export default function JoinDialog({
           </div>
 
           <div className="grid grid-cols-2 gap-4 items-center text-sm">
-            <div className="font-semibold text-right">{targetTable}</div>
+            <div className="font-semibold text-right">{targetTableName}</div>
             <div className="text-muted-foreground">{targetColumn}</div>
           </div>
 

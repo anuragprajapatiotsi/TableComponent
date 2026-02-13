@@ -51,10 +51,10 @@ export default function JoinLines() {
       // Find the table objects first to get their IDs
       // joins only store table names, so we need to map name -> id
       const leftTable = currentTables.find(
-        (t) => t.table_name === join.left_table,
+        (t) => t.id === join.left_dataset_table_id,
       );
       const rightTable = currentTables.find(
-        (t) => t.table_name === join.right_table,
+        (t) => t.id === join.right_dataset_table_id,
       );
 
       if (!leftTable || !rightTable) continue;

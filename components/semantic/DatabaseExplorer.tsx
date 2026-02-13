@@ -17,18 +17,20 @@ import { useDraggable } from "@dnd-kit/core";
 
 function DraggableTableItem({
   table,
+  schema,
   isSelected,
   onClick,
   enableDragging = true,
 }: {
   table: string;
+  schema: string;
   isSelected: boolean;
   onClick: () => void;
   enableDragging?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `explorer-table-${table}`,
-    data: { type: "explorer-table", tableName: table },
+    id: `explorer-table-${schema}-${table}`,
+    data: { type: "explorer-table", tableName: table, schema },
     disabled: !enableDragging,
   });
 
@@ -94,8 +96,10 @@ export default function DatabaseExplorer({
   }, [selectedSchema]);
 
   const toggleSchema = (schema: string) => {
-    setSchemaExpanded((prev) => ({ ...prev, [schema]: !prev[schema] }));
-    if (schema !== selectedSchema) {
+    if (schemaExpanded[schema]) {
+      setSchemaExpanded({});
+    } else {
+      setSchemaExpanded({ [schema]: true });
       setSelectedSchema(schema);
     }
   };
@@ -159,13 +163,14 @@ export default function DatabaseExplorer({
                     <DraggableTableItem
                       key={table}
                       table={table}
+                      schema={schema}
                       isSelected={false} // or logic to check selection
                       enableDragging={enableDragging}
                       onClick={() =>
                         setSelection({
                           type: "table",
                           id: `explorer-${table}`,
-                          data: { tableName: table },
+                          data: { tableName: table, schema },
                         })
                       } // Optional selection logic
                     />

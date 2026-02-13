@@ -22,9 +22,11 @@ import { useSemantic } from "@/context/SemanticContext";
 interface SemanticCardProps {
   table: CanvasTablePosition;
   onJoinRequest?: (
-    srcTable: string,
+    srcTableId: string,
+    srcTableName: string,
     srcCol: string,
-    tgtTable: string,
+    tgtTableId: string,
+    tgtTableName: string,
     tgtCol: string,
   ) => void;
 }
@@ -65,9 +67,18 @@ export default function SemanticCard({
   useEffect(() => {
     async function loadCols() {
       if (!table.table_name) return;
+      console.log(
+        "SemanticCard loading:",
+        table.table_name,
+        "Schema:",
+        table.schema_name,
+      );
       setIsLoading(true);
       try {
-        const cols = await fetchColumns("public", table.table_name);
+        const cols = await fetchColumns(
+          table.schema_name || "public",
+          table.table_name,
+        );
         setColumns(cols);
         registerTableColumns(table.table_name, cols);
       } catch (e) {
@@ -77,7 +88,7 @@ export default function SemanticCard({
       }
     }
     loadCols();
-  }, [table.table_name, registerTableColumns]);
+  }, [table.table_name, table.schema_name, registerTableColumns]);
 
   const handleColumnClick = (colName: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -92,8 +103,10 @@ export default function SemanticCard({
         // Clicked different table -> Request Join
         if (onJoinRequest) {
           onJoinRequest(
+            pendingJoinSource.data.tableId,
             pendingJoinSource.data.tableName,
             pendingJoinSource.data.columnName,
+            table.id,
             table.table_name,
             colName,
           );

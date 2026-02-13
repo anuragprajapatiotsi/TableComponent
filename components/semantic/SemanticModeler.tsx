@@ -33,29 +33,37 @@ export default function SemanticModeler() {
 
   const [joinDialog, setJoinDialog] = React.useState<{
     isOpen: boolean;
-    sourceTable: string;
+    sourceTableId: string;
+    sourceTableName: string;
     sourceColumn: string;
-    targetTable: string;
+    targetTableId: string;
+    targetTableName: string;
     targetColumn: string;
   }>({
     isOpen: false,
-    sourceTable: "",
+    sourceTableId: "",
+    sourceTableName: "",
     sourceColumn: "",
-    targetTable: "",
+    targetTableId: "",
+    targetTableName: "",
     targetColumn: "",
   });
 
   const handleJoinRequest = (
-    srcTable: string,
+    srcTableId: string,
+    srcTableName: string,
     srcCol: string,
-    tgtTable: string,
+    tgtTableId: string,
+    tgtTableName: string,
     tgtCol: string,
   ) => {
     setJoinDialog({
       isOpen: true,
-      sourceTable: srcTable,
+      sourceTableId: srcTableId,
+      sourceTableName: srcTableName,
       sourceColumn: srcCol,
-      targetTable: tgtTable,
+      targetTableId: tgtTableId,
+      targetTableName: tgtTableName,
       targetColumn: tgtCol,
     });
   };
@@ -105,6 +113,7 @@ export default function SemanticModeler() {
       over.id === "canvas-droppable"
     ) {
       const tableName = active.data.current.tableName;
+      const schema = active.data.current.schema;
       // Calculate drop position relative to canvas requires refs, simplified for now
       // We will assume a default or use mouse delta if possible, but delta is 0 for new drag?
       // Actually standard drop logic might need client offsets.
@@ -112,6 +121,7 @@ export default function SemanticModeler() {
       // For now, hardcode 100, 100 or random to ensure visibility
       dropTableOnCanvas(
         tableName,
+        schema,
         100 + Math.random() * 50,
         100 + Math.random() * 50,
       );
@@ -183,9 +193,11 @@ export default function SemanticModeler() {
         <JoinDialog
           isOpen={joinDialog.isOpen}
           onClose={() => setJoinDialog((prev) => ({ ...prev, isOpen: false }))}
-          sourceTable={joinDialog.sourceTable}
+          sourceTableId={joinDialog.sourceTableId}
+          sourceTableName={joinDialog.sourceTableName}
           sourceColumn={joinDialog.sourceColumn}
-          targetTable={joinDialog.targetTable}
+          targetTableId={joinDialog.targetTableId}
+          targetTableName={joinDialog.targetTableName}
           targetColumn={joinDialog.targetColumn}
         />
 

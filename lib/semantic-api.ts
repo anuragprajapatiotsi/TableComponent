@@ -201,6 +201,7 @@ export async function updateTablePosition(
 export type CanvasTablePosition = {
   id: string;
   table_name: string;
+  schema_name?: string;
   alias: string;
   position_x: number;
   position_y: number;
@@ -210,6 +211,7 @@ export async function addTableToCanvas(
   datasetId: string,
   payload: {
     table_name: string;
+    schema_name?: string;
     alias: string;
     position_x: number;
     position_y: number;
@@ -220,7 +222,13 @@ export async function addTableToCanvas(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!response.ok) throw new Error("Failed to add table to canvas");
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Failed to add table to canvas", response.status, errorText);
+    throw new Error(
+      `Failed to add table to canvas: ${response.status} ${errorText}`,
+    );
+  }
   return response.json();
 }
 
@@ -249,19 +257,22 @@ export async function removeTableFromCanvas(
 
 export type JoinRelationship = {
   id: string;
-  left_table: string;
+  left_dataset_table_id: string;
   left_column: string;
-  right_table: string;
+  right_dataset_table_id: string;
   right_column: string;
   join_type: "left" | "right" | "inner" | "full";
+  // Legacy or display names if returned
+  left_table?: string;
+  right_table?: string;
 };
 
 export async function createJoin(
   datasetId: string,
   payload: {
-    left_table: string;
+    left_dataset_table_id: string;
     left_column: string;
-    right_table: string;
+    right_dataset_table_id: string;
     right_column: string;
     join_type: string;
   },
