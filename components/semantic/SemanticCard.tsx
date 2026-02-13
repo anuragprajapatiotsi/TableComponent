@@ -75,10 +75,19 @@ export default function SemanticCard({
       );
       setIsLoading(true);
       try {
-        const cols = await fetchColumns(
-          table.schema_name || "public",
-          table.table_name,
-        );
+        if (!table.schema_name) {
+          console.error("Missing schema_name for table:", table.table_name);
+          // If we restrict this, old tables might break.
+          // But user wants to fix the bug where wrong schema is used.
+          // If we fail here, the table won't load columns, which is better than loading wrong ones?
+          // Actually, if we default to public, we load wrong ones (empty).
+          // If we fail, we show empty. Same result for user?
+          // Let's try to fetch with provided schema, if undefined, maybe API handles it?
+          // API expects string.
+          // Let's THROW if missing, to make it obvious.
+          throw new Error("Schema name is missing");
+        }
+        const cols = await fetchColumns(table.schema_name, table.table_name);
         setColumns(cols);
         registerTableColumns(table.table_name, cols);
       } catch (e) {

@@ -51,7 +51,7 @@ interface SemanticContextType {
 
   // --- Metadata Explorer ---
   schemas: string[];
-  tables: string[]; // Tables in selected schema
+  tablesBySchema: Record<string, string[]>; // Tables per schema
   selectedSchema: string;
   setSelectedSchema: (schema: string) => void;
 
@@ -115,7 +115,9 @@ export function SemanticProvider({ children }: { children: React.ReactNode }) {
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
 
   const [schemas, setSchemas] = useState<string[]>([]);
-  const [tables, setTables] = useState<string[]>([]);
+  const [tablesBySchema, setTablesBySchema] = useState<
+    Record<string, string[]>
+  >({});
   const [selectedSchema, setSelectedSchema] = useState<string>("public");
 
   const [canvasTables, setCanvasTables] = useState<CanvasTablePosition[]>([]);
@@ -240,16 +242,19 @@ export function SemanticProvider({ children }: { children: React.ReactNode }) {
   // --- Watchers ---
   useEffect(() => {
     async function loadSchemaTables() {
-      // Clear tables immediately to prevent showing stale data from previous schema
-      setTables([]);
-
       if (!selectedSchema) return;
       try {
         const t = await fetchTables(selectedSchema);
-        setTables(t);
+        setTablesBySchema((prev) => ({
+          ...prev,
+          [selectedSchema]: t,
+        }));
       } catch (e) {
         console.error("Failed to load tables", e);
-        setTables([]);
+        setTablesBySchema((prev) => ({
+          ...prev,
+          [selectedSchema]: [],
+        }));
       }
     }
     loadSchemaTables();
@@ -257,48 +262,118 @@ export function SemanticProvider({ children }: { children: React.ReactNode }) {
 
   // --- Actions ---
 
-  const loadDataset = useCallback(async (id: string) => {
-    try {
-      const ds = await getDataset(id);
-      setSelectedDataset(ds);
-      // Load canvas content and column configs
-      const [ct, j] = await Promise.all([getCanvasTables(id), getJoins(id)]);
-      setCanvasTables(ct);
-      setJoins(j);
+  // Helper to repair missing schema names (for legacy/backend issues)
+  const repairCanvasTables = useCallback(
+    async (tables: CanvasTablePosition[]): Promise<CanvasTablePosition[]> => {
+      const missingSchema = tables.filter((t) => !t.schema_name);
+      if (missingSchema.length === 0) return tables;
 
-      // Load column configs separately to avoid blocking
+      console.warn(
+        `Found ${missingSchema.length} tables missing schema. Attempting repair...`,
+      );
+
       try {
-        const configs = await getColumnConfigs(id);
-        const configMap: Record<string, ColumnConfigPayload> = {};
-        configs.forEach((c) => {
-          configMap[`${c.table_name}:${c.column_name}`] = c;
-        });
-        setColumnConfigs(configMap);
-      } catch (e) {
-        console.warn(
-          "Failed to load column configs (endpoint might be missing)",
-          e,
+        // Fetch all schemas to search
+        const allSchemas = await fetchSchemas();
+        const schemaMap: Record<string, string[]> = {};
+
+        // Load all tables for all schemas (in parallel)
+        await Promise.all(
+          allSchemas.map(async (s) => {
+            try {
+              const tablesInSchema = await fetchTables(s);
+              schemaMap[s] = tablesInSchema;
+            } catch (ignore) {
+              // ignore failed schema fetch
+            }
+          }),
         );
-        setColumnConfigs({});
+
+        // Map correct schema to tables
+        return tables.map((t) => {
+          if (t.schema_name) return t;
+
+          // Find which schema contains this table
+          // Prefer 'public' if it exists there
+          if (schemaMap["public"]?.includes(t.table_name)) {
+            return { ...t, schema_name: "public" };
+          }
+
+          // Search others
+          for (const [s, tables] of Object.entries(schemaMap)) {
+            if (tables.includes(t.table_name)) {
+              return { ...t, schema_name: s };
+            }
+          }
+
+          console.error(
+            `Could not find schema for table ${t.table_name}. Defaulting to public.`,
+          );
+          return { ...t, schema_name: "public" }; // Fallback
+        });
+      } catch (e) {
+        console.error("Schema repair failed", e);
+        return tables; // Return original if repair fails
       }
-    } catch (e) {
-      console.error("Failed to load dataset", id, e);
-    }
-  }, []);
+    },
+    [],
+  );
+
+  const loadDataset = useCallback(
+    async (id: string) => {
+      try {
+        const ds = await getDataset(id);
+        setSelectedDataset(ds);
+        // Load canvas content and column configs
+        let [ct, j] = await Promise.all([getCanvasTables(id), getJoins(id)]);
+
+        // Repair missing schemas
+        ct = await repairCanvasTables(ct);
+
+        setCanvasTables(ct);
+        setJoins(j);
+
+        // Load column configs separately to avoid blocking
+        try {
+          const configs = await getColumnConfigs(id);
+          const configMap: Record<string, ColumnConfigPayload> = {};
+          configs.forEach((c) => {
+            configMap[`${c.table_name}:${c.column_name}`] = c;
+          });
+          setColumnConfigs(configMap);
+        } catch (e) {
+          console.warn(
+            "Failed to load column configs (endpoint might be missing)",
+            e,
+          );
+          setColumnConfigs({});
+        }
+      } catch (e) {
+        console.error("Failed to load dataset", id, e);
+      }
+    },
+    [repairCanvasTables],
+  );
 
   const refreshCanvas = useCallback(async () => {
     if (!selectedDataset) return;
     try {
-      const [ct, j] = await Promise.all([
+      let [ct, j] = await Promise.all([
         getCanvasTables(selectedDataset.id),
         getJoins(selectedDataset.id),
       ]);
+
+      // Repair missing schemas
+      ct = await repairCanvasTables(ct);
+
+      console.log("Refreshed canvas tables:", ct);
+      console.log("Refreshed joins:", j);
       setCanvasTables(ct);
       setJoins(j);
     } catch (e) {
       console.error("Canvas refresh failed", e);
     }
-  }, [selectedDataset]);
+  }, [selectedDataset, repairCanvasTables]);
 
   const dropTableOnCanvas = useCallback(
     async (
@@ -469,7 +544,7 @@ export function SemanticProvider({ children }: { children: React.ReactNode }) {
     selectedDataset,
     loadDataset,
     schemas,
-    tables,
+    tablesBySchema,
     selectedSchema,
     setSelectedSchema,
     canvasTables,
