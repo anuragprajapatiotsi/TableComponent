@@ -296,14 +296,14 @@ export async function deleteJoin(
 
 // --- 5. Column Semantic Properties ---
 
+// --- 5. Column Semantic Properties ---
+
 export type ColumnConfigPayload = {
   table_name: string;
   column_name: string;
-  display_name?: string;
-  semantic_type?: string;
-  aggregation?: string;
-  is_filterable?: boolean;
-  is_groupable?: boolean;
+  display_name: string;
+  role: "Dimension" | "Indicator";
+  definition_id: string; // The ID from the master table (e.g. "CalendarYear")
 };
 
 export async function saveColumnConfig(
@@ -324,4 +324,70 @@ export async function getColumnConfigs(
   const response = await fetch(`${BASE_URL}/datasets/${datasetId}/columns`);
   if (!response.ok) throw new Error("Failed to fetch column configs");
   return response.json();
+}
+
+// --- 6. Semantic Modeling Master Data ---
+
+export type SemanticDefinition = {
+  id: string;
+  name: string;
+  description?: string;
+};
+
+// Response is a map of Category -> Definitions
+export type GroupedSemanticDefinitions = Record<string, SemanticDefinition[]>;
+
+export async function fetchSemanticColumnTypes(
+  type: "Dimension" | "Indicator",
+): Promise<GroupedSemanticDefinitions> {
+  try {
+    const queryType = type === "Indicator" ? "Indicators" : type;
+    const response = await fetch(
+      `${BASE_URL}/semantic-modeling/column-types?type=${queryType}`,
+    );
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (e) {
+    console.warn("API unavailable, using mock data for semantic types", e);
+  }
+
+  // Fallback / Mock Data
+  if (type === "Dimension") {
+    return {
+      Time: [
+        { id: "CalendarYear", name: "Calendar Year" },
+        { id: "CalendarQuarter", name: "Calendar Quarter" },
+        { id: "CalendarMonth", name: "Calendar Month" },
+        { id: "CalendarDate", name: "Calendar Date" },
+      ],
+      Geography: [
+        { id: "Country", name: "Country" },
+        { id: "State", name: "State" },
+        { id: "City", name: "City" },
+        { id: "PostalCode", name: "Postal Code" },
+      ],
+      Product: [
+        { id: "Category", name: "Category" },
+        { id: "SubCategory", name: "Sub Category" },
+        { id: "ProductName", name: "Product Name" },
+      ],
+    };
+  } else {
+    return {
+      Sales: [
+        { id: "Revenue", name: "Revenue" },
+        { id: "Cost", name: "Cost" },
+        { id: "Profit", name: "Profit" },
+      ],
+      Quantity: [
+        { id: "UnitsSold", name: "Units Sold" },
+        { id: "Returns", name: "Returns" },
+      ],
+      Ratio: [
+        { id: "Margin", name: "Margin %" },
+        { id: "YoYGrowth", name: "YoY Growth %" },
+      ],
+    };
+  }
 }

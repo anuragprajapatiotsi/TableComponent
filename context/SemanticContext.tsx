@@ -32,6 +32,7 @@ import {
   SemanticColumnMapping,
   SaveMappingPayload,
   updateTablePosition as updateTablePositionApi,
+  getColumnConfigs,
 } from "@/lib/semantic-api";
 
 // Selection Types
@@ -76,6 +77,7 @@ interface SemanticContextType {
   // --- Properties / Selection ---
   selection: SelectedObject | null;
   setSelection: (selection: SelectedObject | null) => void;
+  columnConfigs: Record<string, ColumnConfigPayload>;
   updateColumnConfig: (payload: ColumnConfigPayload) => Promise<void>;
   semanticTypes: SemanticType[];
 
@@ -116,6 +118,9 @@ export function SemanticProvider({ children }: { children: React.ReactNode }) {
 
   const [selection, setSelection] = useState<SelectedObject | null>(null);
   const [semanticTypes, setSemanticTypes] = useState<SemanticType[]>([]);
+  const [columnConfigs, setColumnConfigs] = useState<
+    Record<string, ColumnConfigPayload>
+  >({});
 
   // --- Semantic Editor State ---
   const [columnMappings, setColumnMappings] = useState<SemanticColumnMapping[]>(
@@ -248,10 +253,26 @@ export function SemanticProvider({ children }: { children: React.ReactNode }) {
     try {
       const ds = await getDataset(id);
       setSelectedDataset(ds);
-      // Load canvas content
+      // Load canvas content and column configs
       const [ct, j] = await Promise.all([getCanvasTables(id), getJoins(id)]);
       setCanvasTables(ct);
       setJoins(j);
+
+      // Load column configs separately to avoid blocking
+      try {
+        const configs = await getColumnConfigs(id);
+        const configMap: Record<string, ColumnConfigPayload> = {};
+        configs.forEach((c) => {
+          configMap[`${c.table_name}:${c.column_name}`] = c;
+        });
+        setColumnConfigs(configMap);
+      } catch (e) {
+        console.warn(
+          "Failed to load column configs (endpoint might be missing)",
+          e,
+        );
+        setColumnConfigs({});
+      }
     } catch (e) {
       console.error("Failed to load dataset", id, e);
     }
@@ -376,11 +397,26 @@ export function SemanticProvider({ children }: { children: React.ReactNode }) {
 
   const updateColumnConfig = useCallback(
     async (payload: ColumnConfigPayload) => {
-      if (!selectedDataset) return;
+      console.log("updateColumnConfig called", payload);
+      if (!selectedDataset) {
+        console.warn("No selected dataset, aborting save");
+        return;
+      }
+
+      // 1. Optimistic Update
+      setColumnConfigs((prev) => ({
+        ...prev,
+        [`${payload.table_name}:${payload.column_name}`]: payload,
+      }));
+      console.log("Optimistic update applied");
+
       try {
+        // 2. Call API
         await saveColumnConfig(selectedDataset.id, payload);
+        console.log("API save success");
       } catch (e) {
         console.error("Save column config failed", e);
+        // Revert needed? For now, we assume success or user retries.
       }
     },
     [selectedDataset],
@@ -426,6 +462,7 @@ export function SemanticProvider({ children }: { children: React.ReactNode }) {
     removeJoin,
     selection,
     setSelection,
+    columnConfigs,
     updateColumnConfig,
     semanticTypes,
 
